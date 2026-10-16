@@ -1,56 +1,41 @@
-# Welcome to your Expo app 👋
+# Neva — monorepo
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Chat-first marketplace for buying and selling gadgets (Nigeria-first). One shared core, two apps.
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+neva/
+  apps/mobile/     Expo SDK 57 app (iOS / Android, runs in Expo Go)
+  apps/web/        Neva for web — standalone website, WhatsApp Web-style layout (Next.js App Router)
+  packages/core/   Shared code: types, store (zustand), taxonomy, search, places, formatting, theme tokens
+  supabase/        One database schema for both apps (tables, RLS, search, rate limits)
+  docs/            Setup guides (e.g. Google sign-in)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Run
 
-### Other setup steps
+```bash
+npm install          # once, at the repo root (npm workspaces)
+npm run mobile       # Expo dev server → scan the QR code with Expo Go
+npm run web          # http://localhost:3000
+npm run typecheck    # all workspaces
+npm run build:web    # production build (next build) → apps/web/.next
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## How the apps share code
+- Business rules live in `packages/core`. Both apps create the same store with `createNevaStore(storage)`:
+  mobile passes a batched AsyncStorage adapter, web passes localStorage.
+- Colours come from the same palette (`packages/core/src/theme.ts`); web maps them to CSS variables.
+- A fix in core applies to phone and web at once.
 
-## Learn more
+## Sync between phone and web
+Like WhatsApp Web, sync happens through the server. Until Supabase is connected each app keeps its own local data.
+Add the same project to both:
 
-To learn more about developing your project with Expo, look at the following resources:
+- `apps/mobile/.env` → `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+- `apps/web/.env.local` → `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (optional `NEXT_PUBLIC_GOOGLE_SIGN_IN=1`)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Only public keys belong in these files. Never commit service-role / secret keys.
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Accounts & finding people
+- Sign up / log in with email + password (Google optional — see `docs/google-sign-in.md`). No phone numbers.
+- People find each other for DMs by `@username`, shared usernames, invites, and the Message button on listings and shops.
