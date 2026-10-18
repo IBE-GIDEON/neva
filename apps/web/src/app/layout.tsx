@@ -14,9 +14,15 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+// Runs before the first paint so the saved theme is applied immediately (no dark→light flash on load).
+const themeBoot = `try{var t=(JSON.parse(localStorage.getItem('neva-store-v1')||'{}').state||{}).settings;t=t&&t.theme||'system';if(t==='system')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}catch(e){}`;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+      </head>
       <body>{children}</body>
     </html>
   );
