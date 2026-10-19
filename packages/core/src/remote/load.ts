@@ -1,8 +1,9 @@
 /** Reads from the server and merges into the store (server wins; unsent local messages are kept). */
+import { applyOtherDelivered, markDelivered } from './receipts';
 import { ME_ID } from '../constants';
 import type { State } from '../store';
 import type { Conversation, Listing, Message, Profile, Review, Story } from '../types';
-import { type Ctx, isNetworkError, iso, q, selectIn, toLocalUser, ts, uniq } from './context';
+import { type Ctx, friendly, isNetworkError, iso, q, selectIn, toast, toLocalUser, ts, uniq } from './context';
 import {
   conversationFromRow,
   listingFromRow,
@@ -167,8 +168,10 @@ export type LoadedConversations = {
   messages: Record<string, Message[]>;
   userIds: string[];
   listingIds: string[];
-  /** Other member's last_read_at per local conversation id (0003 only). */
+  /** Other member's read time per local conversation id (0005 seen_at, else 0003 last_read_at). */
   otherReadAt: Map<string, number>;
+  /** Other member's delivered time per local conversation id (0005). */
+  otherDeliveredAt: Map<string, number>;
 };
 
 /** Load my conversations (optionally only `serverIds`) with members and recent messages + reactions. */
@@ -186,7 +189,7 @@ export async function fetchConversations(ctx: Ctx, serverIds?: string[]): Promis
   const imagePaths = rows.flatMap((r) => r.messages.filter((m) => m.type === 'image' && m.media_path && !m.deleted_at).map((m) => m.media_path!));
   const signed = await signChatMedia(ctx, imagePaths);
 
-  const out: LoadedConversations = { conversations: [], messages: {}, userIds: [], listingIds: [], otherReadAt: new Map() };
+  const out: LoadedConversations = { conversations: [], messages: {}, userIds: [], listingIds: [], otherReadAt: new Map(), otherDeliveredAt: new Map() };
   for (const r of rows) {
     const mine = r.conversation_members.find((m) => m.user_id === ctx.userId);
     const other = r.conversation_members.find((m) => m.user_id !== ctx.userId);
@@ -194,7 +197,10 @@ export async function fetchConversations(ctx: Ctx, serverIds?: string[]): Promis
     if (mine?.hidden_at && (ts(r.last_message_at) ?? 0) <= (ts(mine.hidden_at) ?? 0)) continue;
     const clearedAt = ts(mine?.cleared_at) ?? 0;
     const myReadAt = ts(mine?.last_read_at);
-    const otherReadAt = ts(other?.last_read_at);
+    // Blue ticks only when both sides allow it: theirs via seen_at (0005), mine via settings.readReceipts.
+    const receiptsOn = ctx.store.getState().settings.readReceipts;
+    const otherReadAt = receiptsOn ? ts(ctx.v5 ? other?.seen_at : other?.last_read_at) : undefined;
+    const otherDeliveredAt = ctx.v5 ? ts(other?.delivered_at) : undefined;
     const msgs = r.messages
       .filter((m) => (ts(m.created_at) ?? 0) > clearedAt)
       .map((m) => messageFromRow(ctx, m, m.message_reactions ?? [], m.media_path ? signed.get(m.media_path) : undefined, myReadAt, otherReadAt))
@@ -204,11 +210,19 @@ export async function fetchConversations(ctx: Ctx, serverIds?: string[]): Promis
     out.conversations.push(conv);
     out.messages[conv.id] = msgs;
     if (otherReadAt) out.otherReadAt.set(conv.id, otherReadAt);
+    if (otherDeliveredAt) out.otherDeliveredAt.set(conv.id, otherDeliveredAt);
     out.userIds.push(r.buyer_id, r.seller_id);
     if (r.listing_id) out.listingIds.push(r.listing_id);
     for (const m of r.messages) if (m.listing_id) out.listingIds.push(m.listing_id);
     ctx.confirmedConvs.add(conv.id);
   }
+  return out;
+}
+
+/** My listings that exist only on this device (not in the server result). */
+function unsyncedMine(local: Record<string, Listing>, server: Record<string, Listing>): Record<string, Listing> {
+  const out: Record<string, Listing> = {};
+  for (const l of Object.values(local)) if (l.sellerId === ME_ID && !server[l.id] && l.status !== 'removed') out[l.id] = l;
   return out;
 }
 
@@ -376,7 +390,9 @@ export async function initialLoad(ctx: Ctx) {
     const meProfile = users[ME_ID] ?? (me.profile ? undefined : s.users[ME_ID]);
     return {
       users: { ...users, ...(meProfile ? { [ME_ID]: { ...meProfile, online: true, following: follows.length } } : {}) },
-      listings,
+      // Server copy wins, but never drop my own listings that haven't reached the server yet
+      // (still uploading, or a failed save) — they're kept and re-sent below.
+      listings: { ...unsyncedMine(s.listings, listings), ...listings },
       follows,
       saved,
       blocked,
@@ -388,8 +404,17 @@ export async function initialLoad(ctx: Ctx) {
     };
   });
   applyConversations(ctx, convData, true, startedAt);
+  // Re-send my listings that only exist on this device.
+  for (const l of Object.values(unsyncedMine(ctx.store.getState().listings, listings))) {
+    void upsertListingRemote(ctx, l.id)
+      .then(() => ctx.store.setState((s) => (s.listings[l.id] && s.listings[l.id]!.status === 'draft' && l.publishedAt ? { listings: { ...s.listings, [l.id]: { ...s.listings[l.id]!, status: 'active' } } } : {})))
+      .catch((e) => toast(friendly(e, `Couldn’t publish “${l.title}”. It’s kept as a draft on this device.`)));
+  }
   // Read receipts for my messages (0003 lets members see each other's last_read_at).
   if (convData.otherReadAt.size) applyOtherRead(ctx, convData.otherReadAt);
+  applyOtherDelivered(ctx, convData.otherDeliveredAt);
+  // My device now has everything: tell senders their messages were delivered.
+  markDelivered(ctx);
 }
 
 export function applyOtherRead(ctx: Ctx, readAt: Map<string, number>) {

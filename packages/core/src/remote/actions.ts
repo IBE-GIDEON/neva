@@ -3,6 +3,7 @@
  * action, except sendMessage/retryMessage which are re-implemented without the local "fake sent" timer),
  * then persists remotely. On failure: messages → 'failed' (retry UI), everything else → reverted + toast.
  */
+import { markReadRemote } from './receipts';
 import { ME_ID } from '../constants';
 import { uid } from '../format';
 import type { State } from '../store';
@@ -262,6 +263,9 @@ export function installActions(ctx: Ctx, onSignOut: () => void): Originals {
 
     markRead: (cid) => {
       o.markRead(cid);
+      // Opening a chat clears its message/offer notifications (the server does the same in mark_read).
+      const isChatNotif = (n: { conversationId?: string; type: string }) => n.conversationId === cid && (n.type === 'message' || n.type === 'offer');
+      if (get().notifications.some(isChatNotif)) set((s) => ({ notifications: s.notifications.filter((n) => !isChatNotif(n)) }));
       const list = get().messages[cid] ?? [];
       const latest = list.reduce((mx, m) => (m.senderId !== ME_ID ? Math.max(mx, m.createdAt) : mx), 0);
       if (!latest || latest <= (lastMarked.get(cid) ?? 0)) return;
@@ -269,7 +273,8 @@ export function installActions(ctx: Ctx, onSignOut: () => void): Originals {
       quiet(async () => {
         const sid = await serverConv(cid);
         if (!sid) return;
-        await sb.from('conversation_members').update({ last_read_at: iso(Math.max(Date.now(), latest + 1)) }).eq('conversation_id', sid).eq('user_id', userId);
+        if (ctx.v5) await markReadRemote(ctx, sid);
+        else await sb.from('conversation_members').update({ last_read_at: iso(Math.max(Date.now(), latest + 1)) }).eq('conversation_id', sid).eq('user_id', userId);
       });
     },
 
@@ -517,8 +522,9 @@ export function installActions(ctx: Ctx, onSignOut: () => void): Originals {
       const existed = ctx.remoteListings.has(id);
       write(
         () => afterProfile(() => upsertListingRemote(ctx, id)),
-        existed ? null : () => set((s) => (s.listings[id] ? { listings: { ...s.listings, [id]: { ...s.listings[id]!, status: 'draft' } } } : {})),
-        existed ? 'Couldn’t save your changes. Try again.' : 'Couldn’t publish your listing. It’s saved as a draft. Open it to try again.',
+        // Keep it visible in My listings; it is re-sent automatically on the next connect.
+        null,
+        existed ? 'Couldn’t save your changes. Try again.' : 'Couldn’t publish your listing yet. It stays in My listings and we’ll retry automatically.',
       );
       return id;
     },

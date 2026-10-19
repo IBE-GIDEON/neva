@@ -1,6 +1,8 @@
 import { connectRemote, type UploadImage } from '@neva/core';
 
-import { useStore } from '@/store';
+import { AppState } from 'react-native';
+
+import { useLive, useStore } from '@/store';
 
 import { supabase } from './supabase';
 
@@ -22,6 +24,9 @@ let current: { userId: string; disconnect: () => void } | null = null;
 export function startSync() {
   if (!supabase || started) return;
   started = true;
+  // "Online" = the app is open on screen.
+  useLive.setState({ foreground: AppState.currentState === 'active' });
+  AppState.addEventListener('change', (state) => useLive.setState({ foreground: state === 'active' }));
   const connect = (userId: string) => {
     if (current?.userId === userId) return;
     current?.disconnect();

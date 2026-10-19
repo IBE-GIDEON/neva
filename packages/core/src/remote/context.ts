@@ -19,6 +19,8 @@ export type Ctx = {
   upload: UploadImage;
   /** Columns / policies from supabase/migrations/0003_sync.sql are present. */
   v3: boolean;
+  /** Receipts columns + mark_read/mark_delivered from supabase/migrations/0005. */
+  v5: boolean;
   alive: boolean;
   /** Local conversation id ⇄ server conversation id (only differs in rare reconciliation cases). */
   convL2R: Map<string, string>;

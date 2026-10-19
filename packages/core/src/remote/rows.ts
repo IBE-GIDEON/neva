@@ -77,6 +77,9 @@ export type MemberRow = {
   /** 0003 */
   cleared_at?: string | null;
   hidden_at?: string | null;
+  /** 0005 */
+  delivered_at?: string | null;
+  seen_at?: string | null;
 };
 
 export type MessageRow = {

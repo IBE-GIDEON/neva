@@ -3,6 +3,8 @@
  *
  *   const disconnect = connectRemote({ store: useStore, supabase, userId: session.user.id, uploadImage });
  */
+import { startPresence } from './presence';
+import { applyOtherDelivered, markDelivered } from './receipts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { NevaStore } from '../store';
@@ -33,12 +35,20 @@ async function probeV3(ctx: Ctx) {
   return !error;
 }
 
+/** True when supabase/migrations/0005 (receipts) has been applied. */
+async function probeV5(ctx: Ctx) {
+  const { error } = await ctx.sb.from('conversation_members').select('delivered_at').limit(1);
+  return !error;
+}
+
 async function refresh(ctx: Ctx) {
   const data = await fetchConversations(ctx);
   await Promise.all([ensureProfiles(ctx, data.userIds), ensureListings(ctx, data.listingIds)]);
   if (!ctx.alive) return;
   applyConversations(ctx, data, false);
   if (data.otherReadAt.size) applyOtherRead(ctx, data.otherReadAt);
+  applyOtherDelivered(ctx, data.otherDeliveredAt);
+  markDelivered(ctx);
   const rows = (await q(ctx.sb.from('notifications').select('*').eq('recipient_id', ctx.userId).order('created_at', { ascending: false }).limit(100))) as NotificationRow[];
   if (ctx.alive) ctx.store.setState({ notifications: rows.map((r) => notificationFromRow(ctx, r)) });
 }
@@ -60,6 +70,7 @@ export function connectRemote({ store, supabase, userId, uploadImage }: ConnectR
     userId,
     upload: uploadImage,
     v3: false,
+    v5: false,
     alive: true,
     convL2R: aliases.l2r,
     convR2L: aliases.r2l,
@@ -83,17 +94,19 @@ export function connectRemote({ store, supabase, userId, uploadImage }: ConnectR
     ctx.timers.forEach(clearTimeout);
     ctx.timers.clear();
     void supabase.removeChannel(channel).catch(() => {});
+    stopPresence();
     store.setState(originals);
     if (activeDisconnect === disconnect) activeDisconnect = null;
   };
 
   const originals = installActions(ctx, disconnect);
   const channel = subscribe(ctx, run, () => void refresh(ctx).catch(() => {}));
+  const stopPresence = startPresence(ctx);
 
   let attempt = 0;
   const load = async () => {
     try {
-      ctx.v3 = await probeV3(ctx);
+      [ctx.v3, ctx.v5] = await Promise.all([probeV3(ctx), probeV5(ctx)]);
       await initialLoad(ctx);
     } catch (e) {
       if (!ctx.alive) return;

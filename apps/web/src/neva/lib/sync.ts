@@ -2,7 +2,7 @@
 
 import { connectRemote, type UploadImage } from '@neva/core';
 
-import { useStore } from '../store';
+import { useLive, useStore } from '../store';
 import { adoptRemoteSession } from './auth';
 import { supabase } from './supabase';
 
@@ -24,6 +24,11 @@ let current: { userId: string; disconnect: () => void } | null = null;
 export function startSync() {
   if (!supabase || started) return;
   started = true;
+  // "Online" = this tab is visible (like WhatsApp Web when the window is in view).
+  const onVisibility = () => useLive.setState({ foreground: document.visibilityState === 'visible' });
+  onVisibility();
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pagehide', () => useLive.setState({ foreground: false }));
   const connect = (userId: string) => {
     if (current?.userId === userId) return;
     current?.disconnect();

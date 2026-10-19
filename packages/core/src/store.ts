@@ -36,8 +36,10 @@ type Live = {
   activeConversationId: string | null;
   toast: { id: number; text: string; icon?: string } | null;
   sync: SyncHealth;
+  /** App is visible / in the foreground (drives "online"). Apps update it. */
+  foreground: boolean;
 };
-export const useLive = create<Live>(() => ({ typing: {}, activeConversationId: null, toast: null, sync: { status: 'off', since: Date.now() } }));
+export const useLive = create<Live>(() => ({ typing: {}, activeConversationId: null, toast: null, sync: { status: 'off', since: Date.now() }, foreground: true }));
 export const setSyncHealth = (p: Partial<SyncHealth>) => useLive.setState((s) => ({ sync: { ...s.sync, ...p } }));
 export const showToast = (text: string, icon?: string) => useLive.setState({ toast: { id: Date.now(), text, icon } });
 

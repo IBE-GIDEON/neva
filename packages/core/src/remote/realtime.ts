@@ -1,4 +1,5 @@
 /** Realtime: messages, reactions, conversations, memberships, notifications, stories → store. */
+import { applyOtherDelivered, applyOtherSeen, markDelivered } from './receipts';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 import { ME_ID } from '../constants';
@@ -44,6 +45,7 @@ async function onMessage(ctx: Ctx, p: Payload<MessageRow>) {
   if (!ctx.alive) return;
 
   const incoming = row.sender_id !== ctx.userId;
+  let afterIncoming: 'read' | 'delivered' | null = null;
   ctx.store.setState((s) => {
     const conv = s.conversations[cid];
     if (!conv) return {};
@@ -59,7 +61,8 @@ async function onMessage(ctx: Ctx, p: Payload<MessageRow>) {
         starred: existing.starred,
         imageUri: fresh.deleted ? undefined : fresh.imageUri ?? existing.imageUri,
         storyImage: fresh.storyImage ?? existing.storyImage,
-        status: incoming ? (existing.status === 'read' ? 'read' : fresh.status) : existing.status === 'read' ? 'read' : 'sent',
+        // never downgrade a tick when the server echo arrives
+        status: incoming ? (existing.status === 'read' ? 'read' : fresh.status) : existing.status === 'read' || existing.status === 'delivered' ? existing.status : 'sent',
       };
       next = list.map((m) => (m.id === row.id ? merged : m));
     } else {
@@ -68,6 +71,7 @@ async function onMessage(ctx: Ctx, p: Payload<MessageRow>) {
     next.sort((a, b) => a.createdAt - b.createdAt);
     const isNew = p.eventType === 'INSERT' && !existing;
     const active = useLive.getState().activeConversationId === cid;
+    if (isNew && incoming) afterIncoming = active ? 'read' : 'delivered';
     return {
       messages: { ...s.messages, [cid]: next },
       conversations: {
@@ -80,6 +84,9 @@ async function onMessage(ctx: Ctx, p: Payload<MessageRow>) {
       },
     };
   });
+  // Chat open on screen → it's read (blue ticks for them, notification cleared). Otherwise it's delivered.
+  if (afterIncoming === 'read' && useLive.getState().foreground) ctx.store.getState().markRead(cid);
+  else if (afterIncoming) markDelivered(ctx, cid);
 }
 
 function onReaction(ctx: Ctx, p: Payload<ReactionRow>) {
@@ -125,8 +132,10 @@ function onMember(ctx: Ctx, p: Payload<MemberRow>) {
   const row = p.new as MemberRow;
   const cid = toLocalConv(ctx, row.conversation_id);
   if (row.user_id !== ctx.userId) {
-    const at = ts(row.last_read_at);
-    if (at) applyOtherRead(ctx, new Map([[cid, at]]));
+    const delivered = ts(row.delivered_at);
+    if (delivered) applyOtherDelivered(ctx, new Map([[cid, delivered]]));
+    const seen = ts(ctx.v5 ? row.seen_at : row.last_read_at);
+    if (seen) applyOtherSeen(ctx, new Map([[cid, seen]]));
     return;
   }
   // my membership changed on another device
