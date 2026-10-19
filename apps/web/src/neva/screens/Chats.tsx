@@ -102,6 +102,17 @@ function ChatList({ activeId }: { activeId?: string }) {
     )
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.lastMessageAt - a.lastMessageAt);
 
+  // Like WhatsApp: the main search also finds people you haven't chatted with yet (by @username or name).
+  const chatWith = new Set(active.map((c) => c.participantId));
+  const people = useMemo(
+    () => (query.replace(/^@/, '').length >= 2 ? useStore.getState().searchPeople(q.trim()).filter((u) => !chatWith.has(u.id)) : []),
+    [query, users], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const startChat = (id: string) => {
+    setQ('');
+    go(`/chats/${useStore.getState().startConversation(id)}`);
+  };
+
   const markAllRead = () => active.forEach((c) => c.unread && useStore.getState().markRead(c.id));
 
   return (
@@ -154,14 +165,25 @@ function ChatList({ activeId }: { activeId?: string }) {
             {archivedUnread > 0 && <span className="n">{archivedUnread}</span>}
           </div>
         )}
+        {query && list.length > 0 && people.length > 0 && <div className="section-label">Chats</div>}
         {list.map((c) => (
           <ChatRow key={c.id} c={c} active={c.id === activeId} onOpen={() => go(`/chats/${c.id}`)} />
         ))}
-        {list.length === 0 && (
+        {people.length > 0 && <div className="section-label">People on Neva</div>}
+        {people.map((u) => (
+          <div key={u.id} className="lrow" onClick={() => startChat(u.id)}>
+            <Avatar user={u} size={44} />
+            <div className="grow">
+              <div className="tt" style={{ display: 'flex', gap: 5, alignItems: 'center' }}>{u.displayName}<Verified user={u} /></div>
+              <div className="st ellipsis">@{u.username}{u.city ? ` · ${u.city}` : ''}</div>
+            </div>
+          </div>
+        ))}
+        {list.length === 0 && people.length === 0 && (
           <Empty
             icon={<MessageSquarePlus size={26} />}
             title={query ? `No chats match “${q.trim()}”` : active.length ? 'Nothing here' : 'No conversations yet'}
-            body={query ? 'Start a new chat to search everyone on Neva by @username.' : active.length ? 'Try another filter.' : 'Message a seller from any listing in Explore, or find people by @username.'}
+            body={query ? (query.replace(/^@/, '').length < 2 ? 'Type at least 2 letters to search people.' : 'No one on Neva matches that name or @username yet.') : active.length ? 'Try another filter.' : 'Message a seller from any listing in Explore, or find people by @username.'}
             action={
               !active.length || query ? (
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>

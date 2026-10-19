@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChatRow } from '@/components/ChatRow';
 import { Sheet, type SheetAction } from '@/components/Sheet';
-import { BrandMark, Chip, EmptyState, Icon, IconButton, T, Tap } from '@/components/ui';
+import { Avatar, BrandMark, Chip, EmptyState, Icon, IconButton, T, Tap, VerifiedTick } from '@/components/ui';
 import type { Conversation } from '@neva/core';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -75,6 +75,18 @@ export default function Chats() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations, filter, query, users, offerIds]);
 
+  // Like WhatsApp: the main search also finds people you haven't chatted with yet (by @username or name).
+  const people = useMemo(() => {
+    const q = query.trim();
+    if (q.replace(/^@/, '').length < 2) return [];
+    const chatWith = new Set(Object.values(conversations).filter((c) => c.status !== 'archived').map((c) => c.participantId));
+    return useStore.getState().searchPeople(q).filter((u) => !chatWith.has(u.id));
+  }, [query, users, conversations]);
+  const startChat = (id: string) => {
+    setQuery('');
+    router.push(`/chat/${useStore.getState().startConversation(id)}`);
+  };
+
   const confirmDelete = (id: string) =>
     Alert.alert('Delete this chat?', 'Messages are removed from this device. This can’t be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -141,15 +153,32 @@ export default function Chats() {
         windowSize={9}
         removeClippedSubviews
         ListEmptyComponent={
-          <EmptyState
+          people.length ? null : <EmptyState
             icon={query ? 'search-outline' : EMPTY[filter].icon}
             title={query ? 'No results' : EMPTY[filter].title}
-            body={query ? 'Try a seller name, an item, or a word from the chat.' : EMPTY[filter].body}
+            body={query ? (query.trim().replace(/^@/, '').length < 2 ? 'Type at least 2 letters to search people too.' : 'No chats or people match. Check the @username spelling.') : EMPTY[filter].body}
             action={!query && filter === 'all' ? <Tap onPress={() => router.navigate('/(tabs)/explore')} style={{ marginTop: 12, paddingHorizontal: 18, height: 38, justifyContent: 'center', borderRadius: 10, backgroundColor: t.inverse }}><T weight="600" size={14} color={t.inverseText}>Browse Explore</T></Tap> : undefined}
           />
         }
         ListFooterComponent={
-          list.length ? (
+          people.length ? (
+            <View>
+              <T faint size={12.5} weight="600" style={{ paddingHorizontal: 16, paddingTop: list.length ? 18 : 6, paddingBottom: 6, letterSpacing: 0.4 }}>PEOPLE ON NEVA</T>
+              {people.map((u) => (
+                <Pressable key={u.id} onPress={() => startChat(u.id)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: pressed ? t.surface : 'transparent' })}>
+                  <Avatar user={u} size={48} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <T weight="600">{u.displayName}</T>
+                      <VerifiedTick user={u} />
+                    </View>
+                    <T faint size={13}>@{u.username}{u.city ? ` · ${u.city}` : ''}</T>
+                  </View>
+                  <Icon name="chatbubble-outline" size={18} color={t.textDim} />
+                </Pressable>
+              ))}
+            </View>
+          ) : list.length ? (
             <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 22, paddingHorizontal: 30 }}>
               <Icon name="lock-closed-outline" size={12} color={t.textFaint} />
               <T faint size={12} center>Inspect before you pay. Off-app payments aren’t protected.</T>
