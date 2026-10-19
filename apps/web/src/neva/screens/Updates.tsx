@@ -1,6 +1,6 @@
 'use client';
 
-import { formatNaira, STATUS_BGS, type Story, timeAgo } from '@neva/core';
+import { formatNaira, STATUS_BGS, type Story, timeAgo, STORY_DURATION_MS } from '@neva/core';
 import { ChevronLeft, ChevronRight, CircleDashed, Flag, ImageOff, ImagePlus, MessageCircle, MoreVertical, Plus, SendHorizontal, Store, Trash2, Type, UserPlus, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -12,7 +12,7 @@ import { isStoryLive, openDrawer, showToast, useStore, useUI } from '../store';
 import { Intro } from './Chats';
 import { InfoDrawer } from './Info';
 
-const DURATION = 5500;
+const DURATION = STORY_DURATION_MS;
 const REACTIONS = ['😍', '🔥', '😂', '😮', '👏🏽', '💯'];
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 
@@ -107,7 +107,7 @@ export function UpdatesSection() {
               </div>
             </>
           )}
-          {groups.length === 0 && <Empty icon={<CircleDashed size={26} />} title="No updates yet" body="Status updates from sellers you follow show up here for 24 hours." action={<button className="btn line sm" onClick={() => go('/explore')}>Find sellers to follow</button>} />}
+          {groups.length === 0 && <Empty icon={<CircleDashed size={26} />} title="No updates yet" body="Statuses from people you chat with or follow show up here for 24 hours." action={<button className="btn line sm" onClick={() => go('/explore')}>Find sellers to follow</button>} />}
         </div>
       </div>
       <div className={`main${userId ? '' : ' hide-sm'}`}>

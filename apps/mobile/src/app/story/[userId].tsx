@@ -9,11 +9,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Sheet } from '@/components/Sheet';
 import { Avatar, haptic, Icon, VerifiedTick } from '@/components/ui';
-import { formatNaira, timeAgo } from '@neva/core';
+import { formatNaira, timeAgo, STORY_DURATION_MS } from '@neva/core';
 import { isStoryLive, showToast, useStore } from '@/store';
 
 const { height: H } = Dimensions.get('window');
-const DURATION = 5500;
+const DURATION = STORY_DURATION_MS;
 const REACTIONS = ['😍', '🔥', '😂', '😮', '👏🏽', '💯'];
 
 export default function StoryViewer() {

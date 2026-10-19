@@ -183,7 +183,7 @@ async function onStory(ctx: Ctx, p: Payload<StoryRow>) {
   if (p.eventType !== 'INSERT') return;
   const row = p.new as StoryRow;
   const local = toLocalUser(ctx, row.user_id);
-  if (local !== ME_ID && !ctx.store.getState().follows.includes(local)) return;
+  // The server only sends statuses I'm allowed to see (followers + people I chat with), so no client filter.
   await ensureProfiles(ctx, [row.user_id]).catch(() => {});
   if (!ctx.alive) return;
   const story = storyFromRow(ctx, row, local === ME_ID ? 0 : undefined);

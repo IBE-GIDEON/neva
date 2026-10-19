@@ -363,8 +363,8 @@ export async function initialLoad(ctx: Ctx) {
   const listings = await hydrateListings(ctx, [...rowById.values()]);
 
   // stories: people I follow + mine
-  const followSet = new Set(follows);
-  const liveStories = storyRows.filter((r) => r.user_id === ctx.userId || followSet.has(r.user_id));
+  // RLS returns exactly the statuses I may see (mine, people I follow, people I chat with, public ones).
+  const liveStories = storyRows;
   const myStoryIds = liveStories.filter((r) => r.user_id === ctx.userId).map((r) => r.id);
   const viewRows = await selectIn<{ story_id: string }>(myStoryIds, (p) => sb.from('story_views').select('story_id').in('story_id', p));
   const viewCount = new Map<string, number>();
