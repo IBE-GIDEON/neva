@@ -44,9 +44,11 @@
         "expo-image-picker",
         {
           "photosPermission": "Neva uses your photos so you can add pictures to listings, chats and status updates.",
-          "cameraPermission": "Neva uses the camera so you can photograph items you are selling."
+          "cameraPermission": "Neva uses the camera so you can photograph items and record video status updates.",
+          "microphonePermission": "Neva uses the microphone to record sound in your video status updates."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": false,

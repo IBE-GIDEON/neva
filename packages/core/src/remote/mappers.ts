@@ -223,7 +223,9 @@ export function storyFromRow(ctx: Ctx, r: StoryRow, viewers?: number): Story {
   return {
     id: r.id,
     userId: toLocalUser(ctx, r.user_id),
-    imageUri: publicUrl(ctx, 'stories', r.media_path),
+    imageUri: r.media_type === 'video' ? undefined : publicUrl(ctx, 'stories', r.media_path),
+    videoUri: r.media_type === 'video' ? publicUrl(ctx, 'stories', r.media_path) : undefined,
+    videoSeconds: r.media_type === 'video' && r.duration_seconds ? Number(r.duration_seconds) : undefined,
     text: r.text ?? undefined,
     bg: r.bg ?? undefined,
     caption: r.caption ?? undefined,

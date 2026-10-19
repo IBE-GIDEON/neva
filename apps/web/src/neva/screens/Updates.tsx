@@ -1,8 +1,8 @@
 'use client';
 
-import { formatNaira, STATUS_BGS, type Story, timeAgo, STORY_DURATION_MS } from '@neva/core';
-import { ArrowLeft, ChevronLeft, ChevronRight, CircleDashed, Flag, ImageOff, ImagePlus, MessageCircle, MoreVertical, Plus, SendHorizontal, Store, Trash2, Type, UserPlus, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { formatNaira, STATUS_BGS, type Story, timeAgo, STORY_DURATION_MS, STORY_MAX_VIDEO_BYTES, STORY_MAX_VIDEO_SECONDS } from '@neva/core';
+import { ArrowLeft, ChevronLeft, ChevronRight, CircleDashed, Flag, ImageOff, ImagePlus, LoaderCircle, MessageCircle, MoreVertical, Plus, SendHorizontal, Store, Trash2, Type, UserPlus, Video, VideoOff, Volume2, VolumeX, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { Avatar, Dropdown, Empty, Modal } from '../components/ui';
@@ -15,6 +15,32 @@ import { InfoDrawer } from './Info';
 const DURATION = STORY_DURATION_MS;
 const REACTIONS = ['😍', '🔥', '😂', '😮', '👏🏽', '💯'];
 const WEEK = 7 * 24 * 60 * 60 * 1000;
+// Session-wide sound preference for video statuses (muted until the user opts in).
+let storyMuted = true;
+const SPIN_CSS = '@keyframes neva-story-spin { to { transform: rotate(360deg); } }';
+
+/** Reads a local video's length in seconds; handles recorder webm files that report Infinity until seeked. */
+function readVideoSeconds(uri: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.muted = true;
+    const done = (d: number) => {
+      v.onloadedmetadata = v.ontimeupdate = v.onerror = null;
+      v.removeAttribute('src');
+      v.load();
+      if (Number.isFinite(d) && d > 0) resolve(d);
+      else reject(new Error('no duration'));
+    };
+    v.onerror = () => done(NaN);
+    v.onloadedmetadata = () => {
+      if (Number.isFinite(v.duration)) return done(v.duration);
+      v.ontimeupdate = () => done(v.duration);
+      v.currentTime = Number.MAX_SAFE_INTEGER;
+    };
+    v.src = uri;
+  });
+}
 
 export function UpdatesSection() {
   const { id: userId, go } = useNav();
@@ -133,12 +159,24 @@ function StoryViewer({ userId, order, onDone }: { userId: string; order: string[
   });
   const [progress, setProgress] = useState(0);
   const [held, setHeld] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const releaseHold = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    setHeld(false);
+  };
   const [typing, setTyping] = useState(false);
   const [reply, setReply] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const overlay = useUI((s) => !!s.report || !!s.drawer);
   const paused = held || typing || menuOpen || overlay;
   const story = list[i];
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [buffering, setBuffering] = useState(true);
+  const [muted, setMuted] = useState(storyMuted);
+  // A video status drives the progress bar from the video itself; a failed one falls back to the timer.
+  const isVideo = !!story?.videoUri && !videoFailed;
 
   // Move to the next person's status when this one ends, like WhatsApp.
   const nextPerson = () => {
@@ -153,9 +191,40 @@ function StoryViewer({ userId, order, onDone }: { userId: string; order: string[
   useEffect(() => {
     if (story) useStore.getState().markStoryViewed(story.id);
     setProgress(0);
+    setVideoFailed(false);
+    setBuffering(true);
   }, [story?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Video: play/pause with the shared paused state; progress = currentTime / duration.
   useEffect(() => {
-    if (!story || paused) return;
+    const v = videoRef.current;
+    if (!isVideo || !v) return;
+    if (paused) {
+      v.pause();
+      return;
+    }
+    v.play().catch((e: unknown) => {
+      // Sound autoplay blocked by the browser: fall back to muted playback.
+      if (e instanceof DOMException && e.name === 'NotAllowedError' && !v.muted) {
+        storyMuted = true;
+        setMuted(true);
+        v.muted = true;
+        v.play().catch(() => {});
+      }
+    });
+    let raf = 0;
+    const tick = () => {
+      const d = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : story?.videoSeconds;
+      if (d && !v.paused) setProgress(Math.min(1, v.currentTime / d));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [story?.id, paused, isVideo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted;
+  }, [muted, story?.id]);
+  useEffect(() => {
+    if (!story || paused || isVideo) return;
     const start = Date.now() - progress * DURATION;
     const t = setInterval(() => {
       const p = (Date.now() - start) / DURATION;
@@ -165,7 +234,7 @@ function StoryViewer({ userId, order, onDone }: { userId: string; order: string[
       } else setProgress(p);
     }, 50);
     return () => clearInterval(t);
-  }, [story?.id, paused, i]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [story?.id, paused, i, isVideo]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (typing || menuOpen || useUI.getState().report || useUI.getState().drawer) return;
@@ -182,7 +251,7 @@ function StoryViewer({ userId, order, onDone }: { userId: string; order: string[
   const sendReply = (body = reply.trim()) => {
     if (!body) return;
     const cid = useStore.getState().startConversation(userId, story.listingId);
-    useStore.getState().sendMessage(cid, { type: 'story_reply', body, storyImage: story.imageUri });
+    useStore.getState().sendMessage(cid, { type: 'story_reply', body, storyImage: story.videoUri ? undefined : story.imageUri });
     if (body === reply.trim()) setReply('');
     showToast(REACTIONS.includes(body) ? `Reacted ${body}` : 'Reply sent');
   };
@@ -204,9 +273,51 @@ function StoryViewer({ userId, order, onDone }: { userId: string; order: string[
         <ChevronRight size={24} />
       </button>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-        <div className="story" onMouseDown={() => setHeld(true)} onMouseUp={() => setHeld(false)} onMouseLeave={() => setHeld(false)} style={{ userSelect: 'none' }}>
+        <div
+          className="story"
+          // Hold to pause (mouse or finger). A short delay keeps quick taps (next/previous) from flashing the UI.
+          onPointerDown={() => {
+            if (holdTimer.current) clearTimeout(holdTimer.current);
+            holdTimer.current = setTimeout(() => setHeld(true), 180);
+          }}
+          onPointerUp={releaseHold}
+          onPointerCancel={releaseHold}
+          onPointerLeave={releaseHold}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {story.imageUri ? <img src={story.imageUri} alt="" draggable={false} /> : <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 32, background: story.bg ?? STATUS_BGS[0], color: '#fff', fontSize: 26, fontWeight: 600, textAlign: 'center', lineHeight: 1.3, whiteSpace: 'pre-wrap' }}>{story.text}</div>}
+          {story.videoUri ? (
+            videoFailed ? (
+              <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', alignContent: 'center', gap: 10, background: '#111', color: 'rgba(255,255,255,.7)', fontSize: 14 }}>
+                <VideoOff size={28} />
+                Video unavailable
+              </div>
+            ) : (
+              <>
+                <video
+                  key={story.id}
+                  ref={videoRef}
+                  src={story.videoUri}
+                  playsInline
+                  autoPlay
+                  muted={muted}
+                  preload="auto"
+                  onWaiting={() => setBuffering(true)}
+                  onPlaying={() => setBuffering(false)}
+                  onCanPlay={() => setBuffering(false)}
+                  onEnded={() => forward()}
+                  onError={() => { setVideoFailed(true); setBuffering(false); setProgress(0); }}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#000' }}
+                />
+                {buffering && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', color: 'rgba(255,255,255,.75)' }}>
+                    <style>{SPIN_CSS}</style>
+                    <LoaderCircle size={30} style={{ animation: 'neva-story-spin .9s linear infinite' }} />
+                  </div>
+                )}
+              </>
+            )
+          ) : story.imageUri ? <img src={story.imageUri} alt="" draggable={false} /> : <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 32, background: story.bg ?? STATUS_BGS[0], color: '#fff', fontSize: 26, fontWeight: 600, textAlign: 'center', lineHeight: 1.3, whiteSpace: 'pre-wrap' }}>{story.text}</div>}
           <div className="bars fade-ui" style={ui}>
             {list.map((s, j) => <div key={s.id}><i style={{ width: `${(j < i ? 1 : j === i ? progress : 0) * 100}%` }} /></div>)}
           </div>
@@ -219,6 +330,17 @@ function StoryViewer({ userId, order, onDone }: { userId: string; order: string[
               <div style={{ fontWeight: 600, fontSize: 14 }}>{userId === meId ? 'My status' : user.displayName}</div>
               <div style={{ fontSize: 12, opacity: 0.85 }}>{timeAgo(story.createdAt)}</div>
             </div>
+            {isVideo && (
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => { storyMuted = !muted; setMuted(!muted); if (videoRef.current) videoRef.current.muted = !muted; }}
+                aria-label={muted ? 'Unmute' : 'Mute'}
+                title={muted ? 'Unmute' : 'Mute'}
+                style={{ color: '#fff', display: 'grid', placeItems: 'center', width: 32, height: 32 }}
+              >
+                {muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
+              </button>
+            )}
             {userId === meId && (
               <button onMouseDown={(e) => e.stopPropagation()} onClick={() => { if (confirm('Delete this status?')) { useStore.getState().deleteStory(story.id); if (list.length <= 1) onDone(); else setI(Math.max(0, i - 1)); } }} style={{ color: '#fff' }} aria-label="Delete status">
                 <Trash2 size={19} />
@@ -299,16 +421,57 @@ function StoryViewer({ userId, order, onDone }: { userId: string; order: string[
 
 function StatusComposer({ onClose }: { onClose: () => void }) {
   const myListings = useStore(useShallow((s) => Object.values(s.listings).filter((l) => l.sellerId === s.meId && l.status === 'active')));
-  const [mode, setMode] = useState<'text' | 'photo'>('text');
+  const [mode, setMode] = useState<'text' | 'photo' | 'video'>('text');
   const [text, setText] = useState('');
   const [bg, setBg] = useState(0);
   const [img, setImg] = useState<string>();
+  const [video, setVideo] = useState<{ uri: string; seconds: number }>();
+  const [videoError, setVideoError] = useState('');
+  const [reading, setReading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Object URLs we created; revoked on unmount unless handed to the store.
+  const urls = useRef<{ all: string[]; kept?: string }>({ all: [] });
+  useEffect(() => {
+    const u = urls.current;
+    return () => u.all.forEach((x) => x !== u.kept && URL.revokeObjectURL(x));
+  }, []);
   const [caption, setCaption] = useState('');
   const [listingId, setListingId] = useState('');
-  const can = mode === 'text' ? !!text.trim() : !!img;
+  const can = mode === 'text' ? !!text.trim() : mode === 'photo' ? !!img : !!video && !reading;
+  const pickVideo = async (file?: File) => {
+    if (!file) return;
+    setVideoError('');
+    if (file.type && !file.type.startsWith('video/')) return setVideoError('That file isn’t a video — choose an MP4, MOV or WebM.');
+    if (file.size > STORY_MAX_VIDEO_BYTES) return setVideoError('Video is too large (max 50 MB)');
+    const uri = URL.createObjectURL(file);
+    urls.current.all.push(uri);
+    setReading(true);
+    try {
+      const seconds = await readVideoSeconds(uri);
+      // Small tolerance: phone-trimmed clips often land at 30.0x seconds.
+      if (seconds > STORY_MAX_VIDEO_SECONDS + 0.5) {
+        URL.revokeObjectURL(uri);
+        setVideoError(`Videos can be up to ${STORY_MAX_VIDEO_SECONDS} seconds — trim it and try again`);
+        return;
+      }
+      setVideo({ uri, seconds: Math.min(seconds, STORY_MAX_VIDEO_SECONDS) });
+    } catch {
+      URL.revokeObjectURL(uri);
+      setVideoError('Couldn’t read that video — try a different file.');
+    } finally {
+      setReading(false);
+    }
+  };
   const post = () => {
     if (!can) return;
-    useStore.getState().addStory(mode === 'text' ? { text: text.trim(), bg: STATUS_BGS[bg], listingId: listingId || undefined } : { imageUri: img, caption: caption.trim() || undefined, listingId: listingId || undefined });
+    const link = listingId || undefined;
+    const cap = caption.trim() || undefined;
+    if (mode === 'text') useStore.getState().addStory({ text: text.trim(), bg: STATUS_BGS[bg], listingId: link });
+    else if (mode === 'photo') useStore.getState().addStory({ imageUri: img, caption: cap, listingId: link });
+    else if (video) {
+      urls.current.kept = video.uri;
+      useStore.getState().addStory({ videoUri: video.uri, videoSeconds: video.seconds, caption: cap, listingId: link });
+    }
     showToast('Status posted · visible for 24 hours');
     onClose();
   };
@@ -317,13 +480,37 @@ function StatusComposer({ onClose }: { onClose: () => void }) {
       <div className="pills" style={{ padding: 0 }}>
         <button className={`pill${mode === 'text' ? ' on' : ''}`} onClick={() => setMode('text')}><Type size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 4 }} />Text</button>
         <button className={`pill${mode === 'photo' ? ' on' : ''}`} onClick={() => setMode('photo')}><ImagePlus size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 4 }} />Photo</button>
+        <button className={`pill${mode === 'video' ? ' on' : ''}`} onClick={() => setMode('video')}><Video size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 4 }} />Video</button>
       </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="video/mp4,video/quicktime,video/webm,video/*"
+        hidden
+        onChange={(e) => { void pickVideo(e.target.files?.[0]); e.target.value = ''; }}
+      />
       {mode === 'text' ? (
         <>
           <textarea autoFocus style={{ background: STATUS_BGS[bg], color: '#fff', border: 0, outline: 0, borderRadius: 12, fontSize: 22, fontWeight: 600, textAlign: 'center', minHeight: 200, padding: 24, resize: 'none' }} placeholder="Type a status" maxLength={240} value={text} onChange={(e) => setText(e.target.value)} />
           <div style={{ display: 'flex', gap: 10 }}>
             {STATUS_BGS.map((c, j) => <button key={c} onClick={() => setBg(j)} style={{ width: 26, height: 26, borderRadius: 13, background: c, outline: j === bg ? '2px solid var(--text)' : 'none', outlineOffset: 2 }} aria-label="Background colour" />)}
           </div>
+        </>
+      ) : mode === 'video' ? (
+        <>
+          {video ? (
+            <div style={{ position: 'relative' }}>
+              <video key={video.uri} src={video.uri} controls playsInline muted preload="metadata" style={{ display: 'block', maxHeight: 320, width: '100%', borderRadius: 12, objectFit: 'contain', background: '#000' }} />
+              <button className="btn line sm" style={{ position: 'absolute', top: 8, right: 8, background: 'var(--panel)' }} disabled={reading} onClick={() => fileRef.current?.click()}>Change</button>
+              <span style={{ position: 'absolute', left: 8, top: 8, background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 12, fontWeight: 600, borderRadius: 6, padding: '2px 6px' }}>0:{String(Math.round(video.seconds)).padStart(2, '0')}</span>
+            </div>
+          ) : (
+            <button className="btn line" style={{ height: 120, borderRadius: 12, borderStyle: 'dashed' }} disabled={reading} onClick={() => fileRef.current?.click()}>
+              <Video size={20} /> {reading ? 'Reading video…' : `Choose a video (up to ${STORY_MAX_VIDEO_SECONDS}s)`}
+            </button>
+          )}
+          {videoError && <div role="alert" style={{ color: 'var(--danger)', fontSize: 13 }}>{videoError}</div>}
+          <input className="field" placeholder="Add a caption…" maxLength={200} value={caption} onChange={(e) => setCaption(e.target.value)} />
         </>
       ) : (
         <>

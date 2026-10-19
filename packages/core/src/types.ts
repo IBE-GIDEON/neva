@@ -104,6 +104,10 @@ export type Story = {
   id: string;
   userId: string;
   imageUri?: string;
+  /** Video status (mp4/mov/webm, up to STORY_MAX_VIDEO_SECONDS). */
+  videoUri?: string;
+  /** Video length in seconds — the viewer plays the whole clip. */
+  videoSeconds?: number;
   text?: string;
   bg?: string;
   caption?: string;

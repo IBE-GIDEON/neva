@@ -31,10 +31,11 @@ import {
   UserX,
   X,
 } from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 
-import { Avatar, Badge, Cond, Dropdown, Empty, Modal, Verified } from '../components/ui';
+import { Avatar, Badge, Cond, Dropdown, Empty, type MenuItem, Modal, Verified } from '../components/ui';
 import { signOutEverywhere } from '../lib/auth';
 import { pickImages } from '../lib/images';
 import { useNav } from '../nav';
@@ -329,6 +330,8 @@ function ConversationView({ id }: { id: string }) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [offer, setOffer] = useState<string | null>(null);
   const [counterFor, setCounterFor] = useState<Message | null>(null);
+  /** Touch long-press action sheet: the pressed message plus a snapshot of its bubble (position + DOM clone). */
+  const [sheet, setSheet] = useState<{ m: Message; rect: DOMRect; clone: HTMLElement } | null>(null);
   const story = useUnseenStory(conv?.participantId);
   const draft = conv?.draft;
   const bottom = useRef<HTMLDivElement>(null);
@@ -410,6 +413,26 @@ function ConversationView({ id }: { id: string }) {
   const pct = askPrice ? Math.round((1 - offerMinor / askPrice) * 100) : 0;
   const shop = () => openDrawer({ kind: 'shop', id: user.id });
   const st = useStore.getState;
+  const replyToMsg = (m: Message) => {
+    setReplyTo(m);
+    input.current?.focus();
+  };
+  /** Message actions — shared by the desktop hover dropdown and the touch long-press sheet. */
+  const msgItems = (m: Message, mine: boolean): MenuItem[] => [
+    !blocked && { label: 'Reply', icon: <Reply size={17} />, onClick: () => { setReplyTo(m); input.current?.focus(); } },
+    m.body && { label: 'Copy', icon: <Copy size={17} />, onClick: () => { navigator.clipboard?.writeText(m.body!).catch(() => {}); showToast('Copied'); } },
+    { label: m.starred ? 'Unstar' : 'Star', icon: <Star size={17} />, onClick: () => st().toggleStar(id, m.id) },
+    m.status === 'failed' && { label: 'Retry sending', icon: <SendHorizontal size={17} />, onClick: () => st().retryMessage(id, m.id) },
+    !mine && { label: 'Report', icon: <Flag size={17} />, onClick: () => useUI.setState({ report: { type: 'message', target: m.id, name: user.displayName } }) },
+    mine && { label: 'Delete for everyone', icon: <Trash2 size={17} />, danger: true, onClick: () => st().deleteMessage(id, m.id) },
+  ];
+  const openSheet = (m: Message, bubble: HTMLElement) => {
+    const clone = bubble.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.hover-chev, .menu').forEach((n) => n.remove());
+    const rect = bubble.getBoundingClientRect();
+    Object.assign(clone.style, { transform: '', transition: '', visibility: 'visible', width: `${rect.width}px`, maxWidth: 'none', margin: '0' });
+    setSheet({ m, rect, clone });
+  };
 
   return (
     <>
@@ -488,7 +511,12 @@ function ConversationView({ id }: { id: string }) {
                 {m.type === 'system' ? (
                   <div className="day-pill">{m.body}</div>
                 ) : (
-                  <div className={`mrow${mine ? ' out' : ''}${first && i > 0 ? ' gap' : ''}${m.reactions && Object.keys(m.reactions).length ? ' has-react' : ''}`}>
+                  <BubbleGestures
+                    className={`mrow swipe-row${mine ? ' out' : ''}${first && i > 0 ? ' gap' : ''}${m.reactions && Object.keys(m.reactions).length ? ' has-react' : ''}${sheet?.m.id === m.id ? ' pressed' : ''}`}
+                    longPress={!m.deleted}
+                    swipe={!m.deleted && !blocked}
+                    onLongPress={(bubble) => openSheet(m, bubble)}
+                    onSwipeReply={() => replyToMsg(m)}>
                     <div className={`bubble${first ? ` tail ${mine ? 'out' : 'in'}` : ''}`}>
                       {!m.deleted && (
                         <Dropdown
@@ -507,14 +535,7 @@ function ConversationView({ id }: { id: string }) {
                               <ChevronDown size={16} />
                             </button>
                           )}
-                          items={[
-                            !blocked && { label: 'Reply', icon: <Reply size={17} />, onClick: () => { setReplyTo(m); input.current?.focus(); } },
-                            m.body && { label: 'Copy', icon: <Copy size={17} />, onClick: () => { navigator.clipboard?.writeText(m.body!).catch(() => {}); showToast('Copied'); } },
-                            { label: m.starred ? 'Unstar' : 'Star', icon: <Star size={17} />, onClick: () => st().toggleStar(id, m.id) },
-                            m.status === 'failed' && { label: 'Retry sending', icon: <SendHorizontal size={17} />, onClick: () => st().retryMessage(id, m.id) },
-                            !mine && { label: 'Report', icon: <Flag size={17} />, onClick: () => useUI.setState({ report: { type: 'message', target: m.id, name: user.displayName } }) },
-                            mine && { label: 'Delete for everyone', icon: <Trash2 size={17} />, danger: true, onClick: () => st().deleteMessage(id, m.id) },
-                          ]}
+                          items={msgItems(m, mine)}
                         />
                       )}
                       {m.replyToId && byId[m.replyToId] && (
@@ -543,7 +564,7 @@ function ConversationView({ id }: { id: string }) {
                         </span>
                       )}
                     </div>
-                  </div>
+                  </BubbleGestures>
                 )}
               </div>
             );
@@ -618,6 +639,19 @@ function ConversationView({ id }: { id: string }) {
         </>
       )}
 
+      {sheet && (
+        <MessageSheet
+          rect={sheet.rect}
+          clone={sheet.clone}
+          mine={sheet.m.senderId === meId}
+          items={msgItems(sheet.m, sheet.m.senderId === meId)}
+          reactions={!blocked}
+          myReaction={sheet.m.reactions?.[meId]}
+          onReact={(e) => st().react(id, sheet.m.id, e)}
+          onClose={() => setSheet(null)}
+        />
+      )}
+
       {offer !== null && (listing || counterFor) && (
         <Modal
           title={counterFor ? 'Counter offer' : 'Make an offer'}
@@ -657,6 +691,262 @@ function ConversationView({ id }: { id: string }) {
         </Modal>
       )}
     </>
+  );
+}
+
+/* ---------- touch gestures (phone-width / coarse pointer) ----------
+ * Mirrors the mobile app's Bubble: long-press opens the action sheet, swipe right replies.
+ * Desktop (mouse, >900px) never starts a gesture and keeps the hover-chevron dropdown. */
+const NARROW_MQ = '(max-width: 900px)';
+const LONG_PRESS_MS = 400;
+const MOVE_SLOP = 10;
+const SWIPE_TRIGGER = 60;
+const SWIPE_MAX = 80;
+/** Interactive bits inside a bubble keep their own tap behaviour (offer buttons, retry, voice play, links). */
+const NO_GESTURE = 'button, a, input, textarea, select, audio, video, [role="button"]';
+const mq = (q: string) => typeof window !== 'undefined' && !!window.matchMedia?.(q).matches;
+const buzz = () => {
+  try {
+    navigator.vibrate?.(10);
+  } catch {}
+};
+
+type GestureState = { id: number; x: number; y: number; touch: boolean; mode: 'pending' | 'swipe'; fired: boolean; timer?: number; onScroll?: () => void };
+
+function BubbleGestures({ className, longPress, swipe, onLongPress, onSwipeReply, children }: { className: string; longPress: boolean; swipe: boolean; onLongPress: (bubble: HTMLElement) => void; onSwipeReply: () => void; children: ReactNode }) {
+  const row = useRef<HTMLDivElement>(null);
+  const arrow = useRef<HTMLSpanElement>(null);
+  const g = useRef<GestureState | null>(null);
+  /** Clicks are swallowed until this timestamp — the tap that ends a long-press/swipe must not open the lightbox etc. */
+  const suppressUntil = useRef(0);
+  const cb = useRef({ onLongPress, onSwipeReply });
+  useEffect(() => {
+    cb.current = { onLongPress, onSwipeReply };
+  });
+  useEffect(
+    () => () => {
+      const s = g.current;
+      if (!s) return;
+      clearTimeout(s.timer);
+      if (s.onScroll) document.removeEventListener('scroll', s.onScroll, true);
+    },
+    [],
+  );
+  const bubble = () => row.current?.querySelector<HTMLElement>(':scope > .bubble') ?? null;
+
+  const end = (commit: boolean) => {
+    const s = g.current;
+    if (!s) return;
+    g.current = null;
+    clearTimeout(s.timer);
+    if (s.onScroll) document.removeEventListener('scroll', s.onScroll, true);
+    if (s.mode !== 'swipe') return;
+    const b = bubble();
+    if (b) {
+      b.style.transition = 'transform .18s ease-out';
+      b.style.transform = '';
+    }
+    if (arrow.current) {
+      arrow.current.style.transition = 'opacity .18s ease-out, transform .18s ease-out';
+      arrow.current.style.opacity = '0';
+      arrow.current.style.transform = 'scale(.6)';
+    }
+    suppressUntil.current = Date.now() + 400;
+    if (commit && s.fired) cb.current.onSwipeReply();
+  };
+
+  const fireLongPress = () => {
+    const b = bubble();
+    end(false);
+    if (!b) return;
+    suppressUntil.current = Date.now() + 800;
+    buzz();
+    cb.current.onLongPress(b);
+  };
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const touch = e.pointerType === 'touch' || e.pointerType === 'pen';
+    // Mouse only gets long-press on phone-width windows (the chevron is hidden there).
+    if (!touch && (e.button !== 0 || !mq(NARROW_MQ))) return;
+    if (!longPress && !swipe) return;
+    const t = e.target as HTMLElement;
+    if (t.closest(NO_GESTURE) || !t.closest('.bubble')) return;
+    end(false);
+    const s: GestureState = { id: e.pointerId, x: e.clientX, y: e.clientY, touch, mode: 'pending', fired: false };
+    if (longPress) s.timer = window.setTimeout(() => g.current === s && s.mode === 'pending' && fireLongPress(), LONG_PRESS_MS);
+    // Any scroll (the chat list or the page) cancels a pending press.
+    s.onScroll = () => end(false);
+    document.addEventListener('scroll', s.onScroll, true);
+    g.current = s;
+  };
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const s = g.current;
+    if (!s || e.pointerId !== s.id) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    const b = bubble();
+    if (s.mode === 'pending') {
+      if (Math.abs(dx) < MOVE_SLOP && Math.abs(dy) < MOVE_SLOP) return;
+      clearTimeout(s.timer);
+      if (!(swipe && s.touch && dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.5) || !b) return end(false);
+      s.mode = 'swipe';
+      try {
+        row.current?.setPointerCapture(e.pointerId);
+      } catch {}
+      b.style.transition = 'none';
+      if (arrow.current) {
+        arrow.current.style.transition = 'none';
+        arrow.current.style.left = `${Math.max(4, b.offsetLeft - 40)}px`;
+      }
+    }
+    if (!b) return;
+    const x = Math.max(0, dx <= SWIPE_TRIGGER ? dx : Math.min(SWIPE_MAX, SWIPE_TRIGGER + (dx - SWIPE_TRIGGER) * 0.4));
+    const k = Math.min(1, x / SWIPE_TRIGGER);
+    b.style.transform = `translateX(${x}px)`;
+    if (arrow.current) {
+      arrow.current.style.opacity = String(k);
+      arrow.current.style.transform = `scale(${0.6 + 0.4 * k})`;
+    }
+    if (!s.fired && x >= SWIPE_TRIGGER) {
+      s.fired = true;
+      buzz();
+    } else if (s.fired && x < SWIPE_TRIGGER) s.fired = false; // sliding back cancels the reply
+  };
+
+  const onClickCapture = (e: ReactMouseEvent) => {
+    if (Date.now() >= suppressUntil.current) return;
+    suppressUntil.current = 0;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const onContextMenu = (e: ReactMouseEvent) => {
+    // Touch / phone-width: no native callout menu; right-click or Android's long-press contextmenu opens the sheet.
+    if (!mq(`(pointer: coarse), ${NARROW_MQ}`)) return;
+    e.preventDefault();
+    const t = e.target as HTMLElement;
+    if (!longPress || g.current?.mode === 'swipe' || Date.now() < suppressUntil.current || t.closest(NO_GESTURE) || !t.closest('.bubble')) return;
+    fireLongPress();
+  };
+
+  return (
+    <div
+      ref={row}
+      className={className}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={() => end(true)}
+      onPointerCancel={() => end(false)}
+      onClickCapture={onClickCapture}
+      onContextMenu={onContextMenu}>
+      {swipe && (
+        <span ref={arrow} className="swipe-reply" aria-hidden>
+          <Reply size={16} />
+        </span>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/** WhatsApp-style long-press sheet: dimmed backdrop, the pressed bubble lifted above it, reactions bar + actions. */
+function MessageSheet({ rect, clone, mine, items, reactions, myReaction, onReact, onClose }: { rect: DOMRect; clone: HTMLElement; mine: boolean; items: MenuItem[]; reactions: boolean; myReaction?: string; onReact: (e: string) => void; onClose: () => void }) {
+  const host = useRef<HTMLDivElement>(null);
+  const card = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  const safe = useRef<HTMLDivElement>(null);
+  /** Ignore the click synthesised from the long-press release — only taps that start inside the sheet count. */
+  const armed = useRef(false);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
+  const [pos, setPos] = useState<{ top: number; maxH: number; clip: boolean; barTop: number; barLeft: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const h = host.current;
+    if (!h) return;
+    h.replaceChildren(clone);
+    return () => h.replaceChildren();
+  }, [clone]);
+
+  useLayoutEffect(() => {
+    const cardTop = card.current?.getBoundingClientRect().top ?? window.innerHeight;
+    const barH = reactions ? (bar.current?.offsetHeight ?? 48) + 10 : 0;
+    const barW = bar.current?.offsetWidth ?? 0;
+    const minTop = (safe.current?.offsetHeight ?? 0) + 12 + barH;
+    const maxBottom = cardTop - 12;
+    const maxH = Math.max(48, maxBottom - minTop);
+    const top = Math.max(minTop, Math.min(rect.top, maxBottom - Math.min(rect.height, maxH)));
+    const want = mine ? rect.right - barW : rect.left;
+    const barLeft = Math.max(12, Math.min(want, window.innerWidth - 12 - barW));
+    setPos({ top, maxH, clip: rect.height > maxH, barTop: top - barH, barLeft });
+  }, [rect, reactions, mine]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close.current();
+    // Browser/Android back closes the sheet: push a same-URL entry and pop it on close.
+    let pushed = false;
+    const onPop = () => {
+      pushed = false;
+      close.current();
+    };
+    const t = window.setTimeout(() => {
+      window.history.pushState(window.history.state, '', window.location.href);
+      pushed = true;
+      window.addEventListener('popstate', onPop);
+    }, 0);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('popstate', onPop);
+      if (pushed) window.history.back();
+    };
+  }, []);
+
+  const run = (fn: () => void) => {
+    close.current();
+    fn();
+  };
+  const hidden = pos ? undefined : ('hidden' as const);
+
+  return createPortal(
+    <div
+      className="msheet"
+      onPointerDownCapture={() => (armed.current = true)}
+      onClickCapture={(e) => {
+        if (armed.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onContextMenu={(e) => e.preventDefault()}>
+      <div ref={safe} className="msheet-safe" />
+      <div className="msheet-backdrop" onClick={() => close.current()} />
+      <div ref={host} className={`msheet-focus mrow${mine ? ' out' : ''}`} style={{ top: pos?.top ?? rect.top, left: rect.left, maxHeight: pos?.clip ? pos.maxH : undefined, overflow: pos?.clip ? 'hidden' : undefined, visibility: hidden }} aria-hidden />
+      {reactions && (
+        <div ref={bar} className="msheet-react" role="group" aria-label="React to message" style={{ top: pos?.barTop ?? 0, left: pos?.barLeft ?? 0, visibility: hidden }}>
+          {EMOJIS.map((e) => (
+            <button key={e} className={myReaction === e ? 'on' : ''} aria-label={`React with ${e}`} onClick={() => run(() => onReact(e))}>
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={card} className="msheet-card" role="menu" aria-label="Message actions">
+        {items.filter(Boolean).map((it) => {
+          const i = it as Exclude<MenuItem, null | false | undefined | ''>;
+          return (
+            <button key={i.label} role="menuitem" className={`msheet-item${i.danger ? ' danger' : ''}`} onClick={() => run(i.onClick)}>
+              {i.icon}
+              <span>{i.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>,
+    document.body,
   );
 }
 

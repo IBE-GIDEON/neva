@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -8,6 +8,7 @@ import Animated, { cancelAnimation, Easing, FadeIn, runOnJS, useAnimatedStyle, u
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Sheet } from '@/components/Sheet';
+import { StoryVideo, storyVideoPrefs } from '@/components/StoryVideo';
 import { Avatar, haptic, Icon, VerifiedTick } from '@/components/ui';
 import { formatNaira, timeAgo, STORY_DURATION_MS } from '@neva/core';
 import { isStoryLive, showToast, useStore } from '@/store';
@@ -56,6 +57,13 @@ export default function StoryViewer() {
   const [menu, setMenu] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [burst, setBurst] = useState<string | null>(null);
+  // Video statuses: the clip drives the bar; on error we fall back to the fixed timer
+  const [failedId, setFailedId] = useState<string>();
+  const videoFailed = !!story && failedId === story.id;
+  const [muted, setMuted] = useState(storyVideoPrefs.muted);
+  const [replay, setReplay] = useState(0);
+  const focused = useIsFocused();
+  const isVideo = !!story?.videoUri && !videoFailed;
 
   const progress = useSharedValue(0);
   const dragY = useSharedValue(0);
@@ -75,6 +83,10 @@ export default function StoryViewer() {
     else if (uIndex > 0) {
       setUIndex(uIndex - 1);
       setSIndex(0);
+    } else if (isVideo) {
+      cancelAnimation(progress);
+      progress.value = 0;
+      setReplay((r) => r + 1);
     } else {
       progress.value = 0;
       start(DURATION);
@@ -95,7 +107,7 @@ export default function StoryViewer() {
     markStoryViewed(story.id);
     progress.value = 0;
     remaining.current = DURATION;
-    start(DURATION);
+    if (!story.videoUri) start(DURATION);
     return () => cancelAnimation(progress);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id]);
@@ -108,7 +120,7 @@ export default function StoryViewer() {
 
   const isHeld = paused || typing || menu || confirming;
   useEffect(() => {
-    if (!story) return;
+    if (!story || isVideo) return;
     if (isHeld) {
       cancelAnimation(progress);
       remaining.current = (1 - progress.value) * DURATION;
@@ -117,6 +129,19 @@ export default function StoryViewer() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHeld]);
+
+  const onVideoError = () => {
+    setFailedId(story?.id);
+    cancelAnimation(progress);
+    progress.value = 0;
+    remaining.current = DURATION;
+    if (!isHeld) start(DURATION);
+  };
+  const toggleMute = () => {
+    haptic.select();
+    storyVideoPrefs.muted = !muted;
+    setMuted(!muted);
+  };
 
   const confirmDelete = (storyId: string) => {
     setConfirming(true);
@@ -162,7 +187,18 @@ export default function StoryViewer() {
     <GestureDetector gesture={pan}>
       <Animated.View style={[{ flex: 1, backgroundColor: '#000', overflow: 'hidden' }, dragStyle]}>
         <Animated.View key={story.id} entering={FadeIn.duration(220)} style={{ position: 'absolute', inset: 0 } as any}>
-          {story.imageUri ? (
+          {story.videoUri ? (
+            <StoryVideo
+              key={replay}
+              uri={story.videoUri}
+              seconds={story.videoSeconds}
+              paused={isHeld || !focused}
+              muted={muted}
+              progress={videoFailed ? undefined : progress}
+              onEnd={next}
+              onError={onVideoError}
+            />
+          ) : story.imageUri ? (
             <Image source={{ uri: story.imageUri }} style={{ flex: 1 }} contentFit="cover" />
           ) : (
             <LinearGradient colors={[story.bg ?? '#312E81', '#000000']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
@@ -197,6 +233,11 @@ export default function StoryViewer() {
               </View>
               <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{timeAgo(story.createdAt)}</Text>
             </Pressable>
+            {isVideo && (
+              <Pressable onPress={toggleMute} hitSlop={10} style={{ padding: 6 }} accessibilityLabel={muted ? 'Unmute' : 'Mute'}>
+                <Icon name={muted ? 'volume-mute' : 'volume-high'} size={22} color="#fff" />
+              </Pressable>
+            )}
             <Pressable onPress={() => setMenu(true)} hitSlop={10} style={{ padding: 6 }}>
               <Icon name="ellipsis-vertical" size={22} color="#fff" />
             </Pressable>

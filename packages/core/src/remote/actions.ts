@@ -22,6 +22,9 @@ import {
   toRemoteConv,
   toRemoteUser,
   toast,
+  isLocalUri,
+  pathFromUrl,
+  videoExtOf,
 } from './context';
 import { ensureProfiles } from './load';
 import { profileFromSearch, reportToRow } from './mappers';
@@ -473,7 +476,12 @@ export function installActions(ctx: Ctx, onSignOut: () => void): Originals {
       if (!story) return;
       write(
         async () => {
-          const media = await storeImage(ctx, 'stories', story.imageUri, story.id);
+          const isVideo = !!story.videoUri;
+          const media = isVideo
+            ? isLocalUri(story.videoUri)
+              ? await ctx.upload('stories', `${userId}/${story.id}.${videoExtOf(story.videoUri!)}`, story.videoUri!)
+              : pathFromUrl(ctx, 'stories', story.videoUri!)
+            : await storeImage(ctx, 'stories', story.imageUri, story.id);
           const privacy = get().settings.statusPrivacy;
           await afterProfile(() =>
             q(
@@ -486,10 +494,14 @@ export function installActions(ctx: Ctx, onSignOut: () => void): Originals {
                 caption: story.caption?.slice(0, 200) ?? null,
                 listing_id: story.listingId && ctx.remoteListings.has(story.listingId) ? story.listingId : null,
                 audience: privacy === 'everyone' ? 'everyone' : 'followers',
+                ...(isVideo ? { media_type: 'video', duration_seconds: story.videoSeconds ? Math.min(31, Math.round(story.videoSeconds * 10) / 10) : null } : {}),
               }),
             ),
           );
-          if (media) set((s) => ({ stories: s.stories.map((x) => (x.id === story.id ? { ...x, imageUri: publicUrl(ctx, 'stories', media) } : x)) }));
+          if (media)
+            set((s) => ({
+              stories: s.stories.map((x) => (x.id === story.id ? (isVideo ? { ...x, videoUri: publicUrl(ctx, 'stories', media) } : { ...x, imageUri: publicUrl(ctx, 'stories', media) }) : x)),
+            }));
         },
         () => set((s) => ({ stories: s.stories.filter((x) => x.id !== story.id) })),
         'Couldn’t post your status.',

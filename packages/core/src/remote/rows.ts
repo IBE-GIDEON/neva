@@ -113,6 +113,9 @@ export type StoryRow = {
   audience: 'everyone' | 'followers';
   created_at: string;
   expires_at: string;
+  /** 0007 */
+  media_type?: 'image' | 'video';
+  duration_seconds?: number | null;
 };
 
 export type ReviewRow = {

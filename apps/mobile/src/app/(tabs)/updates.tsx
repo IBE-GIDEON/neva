@@ -147,8 +147,16 @@ export default function Updates() {
 function StoryCard({ cover, label, sub, user, unseen, add, onPress }: { cover?: Story; label: string; sub: string; user?: any; unseen?: boolean; add?: boolean; onPress: () => void }) {
   const t = useTheme();
   return (
-    <Tap onPress={onPress} scaleTo={0.95} style={{ width: 112, height: 176, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: cover?.bg ?? t.surface2 }}>
-      {cover?.imageUri ? (
+    <Tap onPress={onPress} scaleTo={0.95} style={{ width: 112, height: 176, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: cover?.videoUri ? '#111113' : cover?.bg ?? t.surface2 }}>
+      {cover?.videoUri ? (
+        // Video status: static tile (no players in lists)
+        <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' } as any}>
+          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="play" size={20} color="#fff" style={{ marginLeft: 2 }} />
+          </View>
+          {!!cover.videoSeconds && <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600', marginTop: 6 }}>0:{String(Math.round(cover.videoSeconds)).padStart(2, '0')}</Text>}
+        </View>
+      ) : cover?.imageUri ? (
         <Image source={{ uri: cover.imageUri }} style={{ position: 'absolute', inset: 0 } as any} contentFit="cover" />
       ) : cover?.text ? (
         <View style={{ flex: 1, padding: 10, justifyContent: 'center' }}>

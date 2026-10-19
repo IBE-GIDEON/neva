@@ -6,13 +6,21 @@ import { useLive, useStore } from '@/store';
 
 import { supabase } from './supabase';
 
-const typeOf = (uri: string) => (/\.png($|\?)/i.test(uri) ? 'image/png' : /\.webp($|\?)/i.test(uri) ? 'image/webp' : 'image/jpeg');
+const TYPES: [RegExp, string][] = [
+  [/\.png($|\?)/i, 'image/png'],
+  [/\.webp($|\?)/i, 'image/webp'],
+  [/\.(mp4|m4v)($|\?)/i, 'video/mp4'],
+  [/\.mov($|\?)/i, 'video/quicktime'],
+  [/\.webm($|\?)/i, 'video/webm'],
+];
+/** Content type from the destination path first (it carries the right extension), then the local uri. */
+const typeOf = (path: string, uri: string) => TYPES.find(([re]) => re.test(path))?.[1] ?? TYPES.find(([re]) => re.test(uri))?.[1] ?? 'image/jpeg';
 
 /** Mobile upload: images are local file URIs from the picker; React Native's fetch reads them into an ArrayBuffer. */
 const uploadImage: UploadImage = async (bucket, path, uri) => {
   if (!supabase) throw new Error('Not connected');
   const body = await (await fetch(uri)).arrayBuffer();
-  const { error } = await supabase.storage.from(bucket).upload(path, body, { contentType: typeOf(uri), upsert: true });
+  const { error } = await supabase.storage.from(bucket).upload(path, body, { contentType: typeOf(path, uri), upsert: true });
   if (error) throw error;
   return path;
 };

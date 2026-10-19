@@ -73,6 +73,13 @@ const extOf = (uri: string) => {
   return e === 'jpeg' ? 'jpg' : e;
 };
 
+/** File extension for a local video (blob: URLs carry no name, so default to mp4). */
+export const videoExtOf = (uri: string) => {
+  const m = /^data:video\/(mp4|quicktime|webm)/i.exec(uri) ?? /\.(mp4|mov|webm|m4v)(\?|$)/i.exec(uri);
+  const e = (m?.[1] ?? 'mp4').toLowerCase();
+  return e === 'quicktime' ? 'mov' : e === 'm4v' ? 'mp4' : e;
+};
+
 /** Upload a local image if needed and return the value to store in a *_path column. */
 export const storeImage = async (ctx: Ctx, bucket: Bucket, uri: string | undefined, name: string): Promise<string | null> => {
   if (!uri) return null;
