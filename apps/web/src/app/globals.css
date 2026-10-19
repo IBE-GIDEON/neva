@@ -87,7 +87,7 @@ img { display: block; }
 .grow { flex: 1; min-width: 0; }
 
 /* ---------- app frame ---------- */
-.app { display: flex; height: 100vh; width: 100vw; background: var(--panel); }
+.app { display: flex; height: 100vh; height: 100dvh; width: 100vw; background: var(--panel); }
 
 /* ---------- left nav rail ---------- */
 .rail {
@@ -337,7 +337,7 @@ select.field { appearance: none; cursor: pointer; background: var(--panel); }
 .fade-ui { transition: opacity .18s; }
 
 /* ---------- auth ---------- */
-.auth-page { height: 100vh; overflow-y: auto; background: var(--app-bg); }
+.auth-page { height: 100vh; height: 100dvh; overflow-y: auto; background: var(--app-bg); }
 .auth-band { height: 222px; background: var(--accent-strong); background-image: var(--gradient); }
 .auth-brand { position: absolute; top: 28px; left: max(24px, calc(50% - 500px)); display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 600; font-size: 15px; letter-spacing: .3px; }
 .auth-card {
@@ -350,14 +350,107 @@ select.field { appearance: none; cursor: pointer; background: var(--panel); }
 .auth-tabs button { flex: 1; height: 44px; color: var(--text2); font-weight: 500; border-bottom: 3px solid transparent; }
 .auth-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
 
+@media (min-width: 901px) { .only-sm { display: none !important; } .rail .rl { display: none; } }
+
+/* ================= Phone & small tablet: behave like the Neva mobile app ================= */
 @media (max-width: 900px) {
-  .side { width: 100%; max-width: none; border-right: 0; }
+  :root { --tabbar: calc(58px + env(safe-area-inset-bottom)); }
+  html, body { overscroll-behavior: none; }
+  /* iOS zooms into inputs under 16px — keep every field at 16px */
+  input, textarea, select, .search input, .composer textarea, .box, .field { font-size: 16px !important; }
+  .tip:hover::after { display: none; }
+
+  /* one pane at a time, full width */
+  .app { padding-bottom: var(--tabbar); }
+  .app.detail { padding-bottom: 0; }
+  .side, .main { width: 100%; min-width: 0; max-width: none; border-right: 0; border-left: 0; }
   .side.hide-sm, .main.hide-sm, .drawer { display: none; }
-  .drawer.force { display: flex; position: fixed; inset: 0; width: 100%; max-width: none; z-index: 50; }
-  .auth-card { grid-template-columns: 1fr; padding: 32px 24px; margin-top: -150px; }
-  .chat-scroll { padding: 10px 12px; }
+  .drawer.force { display: flex; position: fixed; inset: 0; width: 100%; min-width: 0; max-width: none; z-index: 50; padding-bottom: env(safe-area-inset-bottom); }
+  .main-head { border-left: 0; padding: 0 8px 0 4px; gap: 8px; padding-top: env(safe-area-inset-top); height: calc(60px + env(safe-area-inset-top)); }
+  .side-head { padding: 0 8px 0 16px; padding-top: env(safe-area-inset-top); height: calc(60px + env(safe-area-inset-top)); }
+  .slide-head { padding: 0 12px 0 4px; padding-top: env(safe-area-inset-top); height: calc(60px + env(safe-area-inset-top)); gap: 6px; }
+  .side-head h1 { font-size: 24px; }
+
+  /* bottom tab bar (the desktop rail) */
+  .rail {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; width: auto; height: var(--tabbar);
+    flex-direction: row; justify-content: space-around; align-items: flex-start; gap: 0;
+    padding: 6px 4px env(safe-area-inset-bottom); border-right: 0; border-top: 1px solid var(--border);
+    background: var(--rail);
+  }
+  .app.detail .rail { display: none; }
+  .rail .desk-only, .rail-sep, .rail-spacer { display: none !important; }
+  .rail-btn { width: auto; height: 46px; flex: 1; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+  .rail-btn:hover, .rail-btn.on { background: none; }
+  .rail-btn.on { color: var(--text); }
+  .rail-btn .rl { font-size: 11px; font-weight: 500; line-height: 1; }
+  .rail-btn.on .rl { font-weight: 600; }
+  .rail-btn .badge { top: 0; right: calc(50% - 22px); }
+  .rail-btn .dot { top: 2px; right: calc(50% - 14px); }
+  .rail .tab-chats { order: 1; } .rail .tab-updates { order: 2; } .rail .tab-sell { order: 3; } .rail .tab-explore { order: 4; } .rail .me-tab { order: 5; margin-top: 0 !important; }
+  .rail .tab-sell svg { color: var(--accent); }
+
+  /* lists & chat */
+  .crow { height: 76px; }
+  .crow .chev { opacity: 1; }
+  .chat-scroll { padding: 10px 10px 6px; }
+  .bubble { max-width: 84%; }
+  .bubble .photo { max-width: 100%; }
+  .bubble .hover-chev { opacity: .6; }
+  .listing-strip { padding: 8px 12px; }
+  .composer { padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); gap: 6px; }
+  .reply-bar { padding: 8px 10px 0; }
+  .notice { max-width: 100%; }
+  .menu { max-width: calc(100vw - 16px); }
+
+  /* pop-ups become bottom sheets; big forms (Sell) go full screen */
+  .overlay { padding: 0; place-items: end stretch; }
+  .modal { width: 100%; max-height: 92dvh; border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  .modal.lg { height: 100dvh; max-height: 100dvh; border-radius: 0; padding-top: env(safe-area-inset-top); }
+  .modal-body { padding: 16px; }
+  .modal-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .toast { bottom: calc(var(--tabbar) + 14px); max-width: calc(100vw - 32px); text-align: center; }
+  .app.detail ~ .toast, .detail .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
+
+  /* explore */
+  .explore-side { display: none; }
+  .explore-side.open { display: flex; position: fixed; inset: 0; z-index: 45; width: 100%; padding-bottom: env(safe-area-inset-bottom); }
+  .explore-top { padding: calc(6px + env(safe-area-inset-top)) 12px 0; background: var(--panel); }
+  .explore-top-row { display: flex; align-items: center; gap: 2px; height: 50px; }
+  .explore-top-row h1 { flex: 1; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.3px; }
+  .explore-top .pills { margin: 0 -12px; padding-left: 12px !important; padding-right: 12px !important; scrollbar-width: none; }
+  .explore-top .pills::-webkit-scrollbar { display: none; }
+  .explore-top + .main-head { height: 44px; padding: 0 12px; padding-top: 0; border-top: 1px solid var(--border); }
+  .explore-top + .main-head .box { width: 150px !important; height: 32px !important; font-size: 14px !important; }
+  .dir { padding: 12px 12px 24px; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .lcard .info { padding: 8px 10px 10px; }
+  .lcard .pr { font-size: 15px; }
+
+  /* status viewer: full screen like the app */
+  .status-stage { position: fixed; inset: 0; z-index: 40; }
+  .status-stage > .icon-btn { display: none; }
+  .story .bars { top: calc(10px + env(safe-area-inset-top)); }
+  .story .story-head { top: calc(22px + env(safe-area-inset-top)) !important; }
+  .story { height: 100dvh; width: 100vw; aspect-ratio: auto; border-radius: 0; }
+  .status-stage > div { width: 100%; height: 100%; gap: 0 !important; }
+  .status-stage > div > .fade-ui:last-child { position: absolute; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); width: auto !important; z-index: 3; }
+
+  /* intro panel never shows on phones */
+  .intro { display: none; }
+
+  /* auth */
+  .auth-band { height: 170px; }
+  .auth-brand { top: calc(20px + env(safe-area-inset-top)); left: 20px; }
+  .auth-card { grid-template-columns: 1fr; gap: 24px; padding: 24px 18px; margin: -96px 12px 24px; width: auto; border-radius: 14px; }
+  .auth-card h1 { font-size: 22px; margin-bottom: 14px; }
+  .auth-card ol { font-size: 14.5px; line-height: 1.9; }
+  .onb-grid { grid-template-columns: repeat(2, 1fr); }
 }
-@media (min-width: 901px) { .only-sm { display: none !important; } }
+@media (max-width: 380px) {
+  .rail-btn .rl { font-size: 10px; }
+  .cards { gap: 8px; }
+}
 
 /* ---------- auth extras: forgot password, avatar picker, onboarding ---------- */
 .link-btn { color: var(--accent); font-size: 13px; font-weight: 500; }

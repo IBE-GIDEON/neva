@@ -42,7 +42,9 @@ export function NevaApp() {
 }
 
 function Shell() {
-  const { section, go } = useNav();
+  const { section, id, go } = useNav();
+  // Phone layout: a detail screen (open chat, status, settings page) hides the bottom tab bar, like the app.
+  const detail = !!id && ['chats', 'archived', 'starred', 'updates', 'settings'].includes(section);
   const me = useStore((s) => s.users[s.meId]);
   const unread = useStore((s) => Object.values(s.conversations).filter((c) => c.unread > 0 && c.status !== 'archived' && !c.muted).length);
   const newStories = useStore((s) => s.stories.some((st) => st.userId !== s.meId && isStoryLive(st) && !s.viewedStories.includes(st.id)));
@@ -89,20 +91,21 @@ function Shell() {
   }
 
   return (
-    <div className="app">
+    <div className={`app${detail ? ' detail' : ''}`}>
       <nav className="rail" aria-label="Neva">
         <RailButton go={go} active={section === 'chats'} id="chats" label="Chats" icon={<MessageSquareText size={22} />} badge={unread} />
         <RailButton go={go} active={section === 'updates'} id="updates" label="Updates" icon={<CircleDashed size={22} />} dot={newStories} />
         <RailButton go={go} active={section === 'explore'} id="explore" label="Explore" icon={<Compass size={22} />} />
         <RailButton go={go} active={section === 'sell'} id="sell" label="Sell an item" icon={<PlusSquare size={22} />} onClick={() => openSell()} />
         <div className="rail-sep" />
-        <RailButton go={go} active={section === 'starred'} id="starred" label="Starred messages" icon={<Star size={21} />} />
-        <RailButton go={go} active={section === 'archived'} id="archived" label="Archived" icon={<Archive size={21} />} />
+        <RailButton desk go={go} active={section === 'starred'} id="starred" label="Starred messages" icon={<Star size={21} />} />
+        <RailButton desk go={go} active={section === 'archived'} id="archived" label="Archived" icon={<Archive size={21} />} />
         <div className="rail-spacer" />
-        <RailButton go={go} active={section === 'notifications'} id="notifications" label="Notifications" icon={<Bell size={21} />} badge={notifs} />
-        <RailButton go={go} active={section === 'settings'} id="settings" label="Settings" icon={<Settings size={21} />} />
-        <button className="rail-btn tip" data-tip="Profile" aria-label="Profile" onClick={() => go('/settings/profile')} style={{ marginTop: 6 }}>
-          <Avatar user={me} size={30} />
+        <RailButton desk go={go} active={section === 'notifications'} id="notifications" label="Notifications" icon={<Bell size={21} />} badge={notifs} />
+        <RailButton desk go={go} active={section === 'settings'} id="settings" label="Settings" icon={<Settings size={21} />} />
+        <button className={`rail-btn tip me-tab${section === 'settings' ? ' on' : ''}`} data-tip="Profile" aria-label="Profile" onClick={() => go(window.matchMedia('(max-width: 900px)').matches ? '/settings' : '/settings/profile')}>
+          <Avatar user={me} size={28} />
+          <span className="rl">Me</span>
         </button>
       </nav>
       {content}
@@ -115,12 +118,13 @@ function Shell() {
   );
 }
 
-type RailProps = { id: string; label: string; icon: React.ReactNode; badge?: number; dot?: boolean; onClick?: () => void; active: boolean; go: (to: string) => void };
+type RailProps = { id: string; label: string; desk?: boolean; icon: React.ReactNode; badge?: number; dot?: boolean; onClick?: () => void; active: boolean; go: (to: string) => void };
 
-function RailButton({ id, label, icon, badge, dot, onClick, active, go }: RailProps) {
+function RailButton({ id, label, icon, badge, dot, onClick, active, go, desk }: RailProps) {
   return (
-    <button className={`rail-btn tip${active ? ' on' : ''}`} data-tip={label} aria-label={label} onClick={onClick ?? (() => go(`/${id}`))}>
+    <button className={`rail-btn tip tab-${id}${active ? ' on' : ''}${desk ? ' desk-only' : ''}`} data-tip={label} aria-label={label} onClick={onClick ?? (() => go(`/${id}`))}>
       {icon}
+      <span className="rl">{id === 'sell' ? 'Sell' : label}</span>
       {!!badge && <Badge count={badge} />}
       {dot && <span className="dot" />}
     </button>

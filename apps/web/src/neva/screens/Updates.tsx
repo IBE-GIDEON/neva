@@ -1,7 +1,7 @@
 'use client';
 
 import { formatNaira, STATUS_BGS, type Story, timeAgo, STORY_DURATION_MS } from '@neva/core';
-import { ChevronLeft, ChevronRight, CircleDashed, Flag, ImageOff, ImagePlus, MessageCircle, MoreVertical, Plus, SendHorizontal, Store, Trash2, Type, UserPlus, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, CircleDashed, Flag, ImageOff, ImagePlus, MessageCircle, MoreVertical, Plus, SendHorizontal, Store, Trash2, Type, UserPlus, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -210,7 +210,10 @@ function StoryViewer({ userId, order, onDone }: { userId: string; order: string[
           <div className="bars fade-ui" style={ui}>
             {list.map((s, j) => <div key={s.id}><i style={{ width: `${(j < i ? 1 : j === i ? progress : 0) * 100}%` }} /></div>)}
           </div>
-          <div className="fade-ui" style={{ position: 'absolute', top: 22, left: 12, right: 12, display: 'flex', alignItems: 'center', gap: 10, color: '#fff', zIndex: 2, ...ui }}>
+          <div className="fade-ui story-head" style={{ position: 'absolute', top: 22, left: 12, right: 12, display: 'flex', alignItems: 'center', gap: 10, color: '#fff', zIndex: 2, ...ui }}>
+            <button className="only-sm" onMouseDown={(e) => e.stopPropagation()} onClick={onDone} aria-label="Close" style={{ color: '#fff', display: 'grid', placeItems: 'center', marginLeft: -4 }}>
+              <ArrowLeft size={22} />
+            </button>
             <Avatar user={user} size={36} onClick={userId !== meId ? () => openDrawer({ kind: 'shop', id: userId }) : undefined} />
             <div className="grow" style={{ textShadow: '0 1px 6px rgba(0,0,0,.4)' }}>
               <div style={{ fontWeight: 600, fontSize: 14 }}>{userId === meId ? 'My status' : user.displayName}</div>

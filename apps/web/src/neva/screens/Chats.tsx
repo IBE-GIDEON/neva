@@ -4,6 +4,7 @@ import { clockTime, type Conversation, dayLabel, formatNaira, inboxTime, isSameD
 import {
   Archive,
   ArrowLeft,
+  Bell,
   BellOff,
   Check,
   CheckCheck,
@@ -119,6 +120,7 @@ function ChatList({ activeId }: { activeId?: string }) {
     <>
       <div className="side-head">
         <h1>Chats</h1>
+        <NotifBell />
         <button className="icon-btn" title="New chat" aria-label="New chat" onClick={() => go('/new')}>
           <MessageSquarePlus size={21} />
         </button>
@@ -196,6 +198,18 @@ function ChatList({ activeId }: { activeId?: string }) {
         )}
       </div>
     </>
+  );
+}
+
+/** Phone layout: notifications live behind a bell in the Chats header, like the app. */
+function NotifBell() {
+  const { go } = useNav();
+  const n = useStore((s) => s.notifications.filter((x) => !x.read).length);
+  return (
+    <button className="icon-btn only-sm" aria-label="Notifications" onClick={() => go('/notifications')} style={{ position: 'relative' }}>
+      <Bell size={21} />
+      {n > 0 && <span className="badge" style={{ position: 'absolute', top: 2, right: 0, minWidth: 16, height: 16, fontSize: 10, padding: '0 4px' }}>{n > 99 ? '99+' : n}</span>}
+    </button>
   );
 }
 

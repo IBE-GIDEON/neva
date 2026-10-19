@@ -12,6 +12,7 @@ export const viewport: Viewport = {
   themeColor: '#111113',
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
 };
 
 // Runs before the first paint so the saved theme is applied immediately (no dark→light flash on load).
