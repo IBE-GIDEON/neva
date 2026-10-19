@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { Card, Header, Icon, T, VerificationList } from '@/components/ui';
-import { CONDITIONS } from '@neva/core';
+import { CONDITIONS, timeAgo } from '@neva/core';
+import { useLive, useStore } from '@/store';
 import { radius, useTheme } from '@/theme';
 
 const TIPS = [
@@ -20,6 +22,7 @@ export default function Safety() {
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <Header title="Safety center" />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 60 }}>
+        <LiveStatus />
         {TIPS.map(([icon, title, body]) => (
           <View key={title} style={{ flexDirection: 'row', gap: 14 }}>
             <View style={{ width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: t.borderStrong, alignItems: 'center', justifyContent: 'center' }}>
@@ -58,5 +61,29 @@ export default function Safety() {
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+function LiveStatus() {
+  const t = useTheme();
+  const sync = useLive((s) => s.sync);
+  const me = useStore((s) => s.users[s.meId]);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
+  const label = { off: 'Not connected', connecting: 'Connecting…', live: 'Connected', reconnecting: 'Reconnecting…', error: 'Connection problem' }[sync.status];
+  const dot = sync.status === 'live' ? '#22c55e' : sync.status === 'error' ? t.danger : t.textFaint;
+  return (
+    <Card style={{ padding: 14, gap: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dot }} />
+        <T weight="600">Live updates: {label}</T>
+      </View>
+      <T faint size={13}>Signed in as @{me?.username ?? '—'}</T>
+      <T faint size={13}>Last live update: {sync.lastEventAt ? `${timeAgo(sync.lastEventAt)} (${sync.lastEvent})` : 'none yet'}</T>
+      {!!sync.lastError && <T size={13} color={t.danger}>Last error: {sync.lastError}</T>}
+    </Card>
   );
 }

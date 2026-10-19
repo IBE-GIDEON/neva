@@ -23,12 +23,22 @@ import { normalizeCategory } from './taxonomy';
 import { caseId, uid } from './format';
 
 /* ---------------- transient (not persisted) ---------------- */
+/** Health of the live (realtime) connection — shown in Settings so problems are visible without dev tools. */
+export type SyncHealth = {
+  status: 'off' | 'connecting' | 'live' | 'reconnecting' | 'error';
+  since: number;
+  lastEventAt?: number;
+  lastEvent?: string;
+  lastError?: string;
+};
 type Live = {
   typing: Record<string, boolean>;
   activeConversationId: string | null;
   toast: { id: number; text: string; icon?: string } | null;
+  sync: SyncHealth;
 };
-export const useLive = create<Live>(() => ({ typing: {}, activeConversationId: null, toast: null }));
+export const useLive = create<Live>(() => ({ typing: {}, activeConversationId: null, toast: null, sync: { status: 'off', since: Date.now() } }));
+export const setSyncHealth = (p: Partial<SyncHealth>) => useLive.setState((s) => ({ sync: { ...s.sync, ...p } }));
 export const showToast = (text: string, icon?: string) => useLive.setState({ toast: { id: Date.now(), text, icon } });
 
 /* ---------------- persisted ---------------- */

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { ME_ID } from '../constants';
-import { showToast, type NevaStore } from '../store';
+import { setSyncHealth, showToast, type NevaStore } from '../store';
 
 export type Bucket = 'avatars' | 'listing-media' | 'stories' | 'chat-media';
 
@@ -93,6 +93,7 @@ export const isNetworkError = (e: unknown) => {
 export const isSchemaMissing = (e: unknown) => ['42703', 'PGRST204', 'PGRST202', '42883', '42P01'].includes(errCode(e));
 
 export const friendly = (e: unknown, fallback: string): string => {
+  setSyncHealth({ lastError: `${fallback} — ${(e as { message?: string })?.message ?? String(e)}` });
   const msg = errMsg(e);
   if (isNetworkError(e)) return `${fallback} You seem to be offline.`;
   if (/rate_limited/.test(msg)) return 'You’re doing that too fast. Try again in a minute.';

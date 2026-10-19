@@ -2,7 +2,7 @@
 
 import { compactNumber, timeAgo, tidyPlace } from '@neva/core';
 import { ArrowLeft, Bell, Bookmark, Camera, ChevronRight, CircleHelp, Download, FileText, Fingerprint, KeyRound, LifeBuoy, Lock, LogOut, Palette, Store, Trash2, User, Users } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 import { Avatar, Empty, Modal } from '../components/ui';
 import { LocationInput } from '../components/LocationInput';
@@ -10,7 +10,7 @@ import { signOutEverywhere } from '../lib/auth';
 import { pickImages } from '../lib/images';
 import { BACKEND_READY } from '../lib/supabase';
 import { useNav } from '../nav';
-import { openDrawer, showToast, useStore } from '../store';
+import { openDrawer, showToast, useLive, useStore } from '../store';
 import { Intro, SlideHead } from './Chats';
 import { SafetyCentre, VerificationMeanings } from './SafetyCentre';
 
@@ -345,10 +345,33 @@ function AppearanceSettings() {
   );
 }
 
+function LiveStatus() {
+  const sync = useLive((s) => s.sync);
+  const me = useStore((s) => s.users[s.meId]);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 5000);
+    return () => clearInterval(t);
+  }, []);
+  const label = { off: 'Not connected', connecting: 'Connecting…', live: 'Connected', reconnecting: 'Reconnecting…', error: 'Connection problem' }[sync.status];
+  const color = sync.status === 'live' ? 'var(--success, #22c55e)' : sync.status === 'error' ? 'var(--danger)' : 'var(--text3)';
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', fontSize: 13.5, lineHeight: 1.6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} /> Live updates: {label}
+      </div>
+      <div className="muted">Signed in as @{me?.username ?? '—'}</div>
+      <div className="muted">Last live update: {sync.lastEventAt ? `${timeAgo(sync.lastEventAt)} (${sync.lastEvent})` : 'none yet'}</div>
+      {sync.lastError && <div style={{ color: 'var(--danger)', wordBreak: 'break-word' }}>Last error: {sync.lastError}</div>}
+    </div>
+  );
+}
+
 function HelpSettings() {
   const reports = useStore((s) => s.reports);
   return (
     <>
+      <LiveStatus />
       <SafetyCentre />
       <div>
         <div className="flabel">Your reports</div>

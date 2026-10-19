@@ -2,7 +2,7 @@
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 import { ME_ID } from '../constants';
-import { useLive } from '../store';
+import { setSyncHealth, useLive } from '../store';
 import type { Message } from '../types';
 import { type Ctx, toLocalConv, toLocalUser, ts } from './context';
 import { applyConversations, applyOtherRead, ensureListings, ensureProfiles, fetchConversations, signChatMedia } from './load';
@@ -189,15 +189,18 @@ export function subscribe(ctx: Ctx, run: Run, onResubscribe: () => void): Realti
   let dropped = false;
   const guard =
     <T,>(fn: (ctx: Ctx, p: T) => unknown) =>
-    (p: T) =>
+    (p: T) => {
+      const ev = p as { table?: string; eventType?: string };
+      setSyncHealth({ lastEventAt: Date.now(), lastEvent: `${ev.table ?? '?'} ${ev.eventType ?? ''}`.trim() });
       run(async () => {
         if (!ctx.alive) return;
         try {
           await fn(ctx, p);
-        } catch {
-          /* ignore malformed events */
+        } catch (e) {
+          setSyncHealth({ lastError: `handling ${ev.table}: ${(e as Error)?.message ?? String(e)}` });
         }
       });
+    };
   const pg = { schema: 'public' } as const;
   const channel = ctx.sb
     .channel(`neva-sync:${ctx.userId}:${Date.now()}`)
@@ -207,14 +210,17 @@ export function subscribe(ctx: Ctx, run: Run, onResubscribe: () => void): Realti
     .on('postgres_changes', { ...pg, event: 'UPDATE', table: 'conversation_members' }, guard(onMember))
     .on('postgres_changes', { ...pg, event: '*', table: 'notifications', filter: `recipient_id=eq.${ctx.userId}` }, guard(onNotification))
     .on('postgres_changes', { ...pg, event: '*', table: 'stories' }, guard(onStory))
-    .subscribe((status) => {
+    .subscribe((status, err) => {
       if (!ctx.alive) return;
       if (status === 'SUBSCRIBED') {
         if (dropped) onResubscribe();
         dropped = false;
+        setSyncHealth({ status: 'live', since: Date.now() });
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         dropped = true;
+        setSyncHealth({ status: status === 'CLOSED' ? 'reconnecting' : 'error', since: Date.now(), ...(err ? { lastError: `live connection: ${err.message}` } : {}) });
       }
     });
+  setSyncHealth({ status: 'connecting', since: Date.now() });
   return channel;
 }
