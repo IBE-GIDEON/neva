@@ -16,6 +16,7 @@ import {
   toRemoteConv,
   toRemoteUser,
   toast,
+  audioExtOf,
 } from './context';
 import { listingToRow, messageToRow, syncedSettingKeys } from './mappers';
 import type { ProfileRow } from './rows';
@@ -189,6 +190,10 @@ export async function deliverMessage(ctx: Ctx, cid: string, mid0: string): Promi
       mediaPath = isLocalUri(msg.imageUri)
         ? await ctx.upload('chat-media', `${ctx.userId}/${sid}/${msg.id}.jpg`, msg.imageUri)
         : pathFromUrl(ctx, 'chat-media', msg.imageUri);
+    } else if (msg.type === 'voice' && msg.voice?.uri) {
+      mediaPath = isLocalUri(msg.voice.uri)
+        ? await ctx.upload('chat-media', `${ctx.userId}/${sid}/${msg.id}.${msg.voice.ext ?? audioExtOf(msg.voice.uri)}`, msg.voice.uri)
+        : pathFromUrl(ctx, 'chat-media', msg.voice.uri);
     } else if (msg.type === 'story_reply' && msg.storyImage && !isLocalUri(msg.storyImage)) {
       mediaPath = msg.storyImage; // public story URL (resolved as-is on read)
     }

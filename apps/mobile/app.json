@@ -45,10 +45,11 @@
         {
           "photosPermission": "Neva uses your photos so you can add pictures to listings, chats and status updates.",
           "cameraPermission": "Neva uses the camera so you can photograph items and record video status updates.",
-          "microphonePermission": "Neva uses the microphone to record sound in your video status updates."
+          "microphonePermission": "Neva uses the microphone to record voice notes in chats and sound in your video status updates."
         }
       ],
-      "expo-video"
+      "expo-video",
+      ["expo-audio", { "microphonePermission": "Neva uses the microphone to record voice notes in chats and sound in your video status updates.", "enableBackgroundPlayback": false }]
     ],
     "experiments": {
       "typedRoutes": false,

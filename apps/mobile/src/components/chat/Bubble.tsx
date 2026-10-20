@@ -1,11 +1,12 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { memo, useEffect, useState } from 'react';
+import { memo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { cancelAnimation, Easing, FadeIn, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { VoiceNote } from '@/components/chat/VoicePlayer';
 import { Ticks } from '@/components/ChatRow';
 import { haptic, Icon, T, TypingDots } from '@/components/ui';
 import type { Message } from '@neva/core';
@@ -109,7 +110,7 @@ export const Bubble = memo(function Bubble({ m, mine, firstInGroup, lastInGroup,
       case 'offer':
         return <OfferCard m={m} mine={mine} fg={fg} meta={meta} onOffer={onOffer} onCounter={onCounter} />;
       case 'voice':
-        return <VoiceNote seconds={m.voice?.seconds ?? 5} fg={fg} mine={mine} />;
+        return <VoiceNote id={m.id} uri={m.voice?.uri} seconds={m.voice?.seconds ?? 1} fg={fg} mine={mine} onLongPress={() => { haptic.medium(); onLongPress(m); }} />;
       case 'story_reply':
         return (
           <View>
@@ -205,71 +206,6 @@ function OfferCard({ m, mine, fg, meta, onOffer, onCounter }: { m: Message; mine
           </Pressable>
         </View>
       )}
-    </View>
-  );
-}
-
-const BARS = [6, 12, 9, 16, 11, 20, 8, 14, 18, 10, 13, 22, 11, 7, 14, 17, 9, 12, 6, 10, 15, 8];
-
-function VoiceNote({ seconds, fg, mine }: { seconds: number; fg: string; mine: boolean }) {
-  const t = useTheme();
-  const progress = useSharedValue(0);
-  const [playing, setPlaying] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [waveW, setWaveW] = useState(0);
-
-  useEffect(() => {
-    if (!playing) return;
-    const started = Date.now() - elapsed * 1000;
-    const id = setInterval(() => {
-      const s = Math.min(seconds, Math.floor((Date.now() - started) / 1000));
-      setElapsed(s);
-      if (s >= seconds) {
-        setPlaying(false);
-        setElapsed(0);
-        progress.value = 0;
-      }
-    }, 200);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing]);
-
-  const toggle = () => {
-    if (playing) {
-      cancelAnimation(progress);
-      setPlaying(false);
-      return;
-    }
-    const from = elapsed / seconds;
-    progress.value = from;
-    progress.value = withTiming(1, { duration: (seconds - elapsed) * 1000, easing: Easing.linear });
-    setPlaying(true);
-  };
-
-  const fill = useAnimatedStyle(() => ({ width: progress.value * waveW }));
-  const idle = mine ? 'rgba(255,255,255,0.4)' : t.surface3;
-  const active = mine ? '#fff' : t.primary;
-  const label = playing || elapsed > 0 ? elapsed : seconds;
-  const bars = (color: string) => (
-    <View style={{ width: waveW, height: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-      {BARS.map((h, i) => (
-        <View key={i} style={{ width: 2.5, height: h, borderRadius: 2, backgroundColor: color }} />
-      ))}
-    </View>
-  );
-
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, width: 230, paddingHorizontal: 2, paddingVertical: 2 }}>
-      <Pressable onPress={toggle} hitSlop={8} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: mine ? 'rgba(255,255,255,0.2)' : t.surface3, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={playing ? 'pause' : 'play'} size={16} color={fg} style={{ marginLeft: playing ? 0 : 2 }} />
-      </Pressable>
-      <View style={{ flex: 1, height: 26, overflow: 'hidden' }} onLayout={(e) => setWaveW(e.nativeEvent.layout.width)}>
-        {waveW > 0 && bars(idle)}
-        {waveW > 0 && (
-          <Animated.View style={[{ position: 'absolute', left: 0, top: 0, height: 26, overflow: 'hidden' }, fill]}>{bars(active)}</Animated.View>
-        )}
-      </View>
-      <Text style={{ width: 32, textAlign: 'right', fontSize: 11.5, color: mine ? 'rgba(255,255,255,0.8)' : t.textDim, fontVariant: ['tabular-nums'] }}>0:{String(label).padStart(2, '0')}</Text>
     </View>
   );
 }

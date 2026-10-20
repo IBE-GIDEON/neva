@@ -193,7 +193,7 @@ export function messageFromRow(
     listingId: r.listing_id ?? undefined,
     storyImage: deleted ? undefined : story,
     offer: r.type === 'offer' && r.offer_amount_minor ? { amountMinor: Number(r.offer_amount_minor), state: r.offer_state ?? 'pending' } : undefined,
-    voice: r.type === 'voice' ? { seconds: r.meta?.voiceSeconds ?? 1 } : undefined,
+    voice: r.type === 'voice' ? { seconds: r.meta?.voiceSeconds ?? 1, uri: deleted ? undefined : imageUrl } : undefined,
     replyToId: r.reply_to_id ?? undefined,
     reactions: reactions.length ? Object.fromEntries(reactions.map((x) => [toLocalUser(ctx, x.user_id), x.emoji])) : undefined,
     status: mine ? (otherReadAt && otherReadAt >= createdAt ? 'read' : 'sent') : myReadAt && myReadAt >= createdAt ? 'read' : 'delivered',

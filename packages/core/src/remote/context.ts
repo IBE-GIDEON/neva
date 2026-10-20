@@ -73,6 +73,13 @@ const extOf = (uri: string) => {
   return e === 'jpeg' ? 'jpg' : e;
 };
 
+/** File extension for a local voice note (iOS/Android record .m4a; browsers record mp4 or webm). */
+export const audioExtOf = (uri: string) => {
+  const m = /^data:audio\/(mp4|x-m4a|m4a|aac|mpeg|webm|ogg)/i.exec(uri) ?? /\.(m4a|mp4|aac|mp3|webm|ogg)(\?|$)/i.exec(uri);
+  const e = (m?.[1] ?? 'm4a').toLowerCase();
+  return e === 'mp4' || e === 'x-m4a' ? 'm4a' : e === 'mpeg' ? 'mp3' : e;
+};
+
 /** File extension for a local video (blob: URLs carry no name, so default to mp4). */
 export const videoExtOf = (uri: string) => {
   const m = /^data:video\/(mp4|quicktime|webm)/i.exec(uri) ?? /\.(mp4|mov|webm|m4v)(\?|$)/i.exec(uri);

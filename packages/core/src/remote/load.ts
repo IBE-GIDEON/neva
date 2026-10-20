@@ -186,7 +186,7 @@ export async function fetchConversations(ctx: Ctx, serverIds?: string[]): Promis
   if (serverIds) b = b.in('id', serverIds);
   const rows = ((await q(b)) ?? []) as ConvRowFull[];
 
-  const imagePaths = rows.flatMap((r) => r.messages.filter((m) => m.type === 'image' && m.media_path && !m.deleted_at).map((m) => m.media_path!));
+  const imagePaths = rows.flatMap((r) => r.messages.filter((m) => (m.type === 'image' || m.type === 'voice') && m.media_path && !m.deleted_at).map((m) => m.media_path!));
   const signed = await signChatMedia(ctx, imagePaths);
 
   const out: LoadedConversations = { conversations: [], messages: {}, userIds: [], listingIds: [], otherReadAt: new Map(), otherDeliveredAt: new Map() };

@@ -12,15 +12,21 @@ const TYPES: [RegExp, string][] = [
   [/\.(mp4|m4v)($|\?)/i, 'video/mp4'],
   [/\.mov($|\?)/i, 'video/quicktime'],
   [/\.webm($|\?)/i, 'video/webm'],
+  [/\.m4a($|\?)/i, 'audio/mp4'],
+  [/\.aac($|\?)/i, 'audio/aac'],
+  [/\.mp3($|\?)/i, 'audio/mpeg'],
 ];
 /** Content type from the destination path first (it carries the right extension), then the local uri. */
-const typeOf = (path: string, uri: string) => TYPES.find(([re]) => re.test(path))?.[1] ?? TYPES.find(([re]) => re.test(uri))?.[1] ?? 'image/jpeg';
+const typeOf = (bucket: string, path: string, uri: string) => {
+  const found = TYPES.find(([re]) => re.test(path))?.[1] ?? TYPES.find(([re]) => re.test(uri))?.[1] ?? 'image/jpeg';
+  return bucket === 'chat-media' && found === 'video/webm' ? 'audio/webm' : found; // chat media is photos + voice notes
+};
 
 /** Mobile upload: images are local file URIs from the picker; React Native's fetch reads them into an ArrayBuffer. */
 const uploadImage: UploadImage = async (bucket, path, uri) => {
   if (!supabase) throw new Error('Not connected');
   const body = await (await fetch(uri)).arrayBuffer();
-  const { error } = await supabase.storage.from(bucket).upload(path, body, { contentType: typeOf(path, uri), upsert: true });
+  const { error } = await supabase.storage.from(bucket).upload(path, body, { contentType: typeOf(bucket, path, uri), upsert: true });
   if (error) throw error;
   return path;
 };

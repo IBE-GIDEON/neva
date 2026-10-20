@@ -4,11 +4,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { Alert, AppState, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Bubble, DayPill, TypingBubble } from '@/components/chat/Bubble';
+import { pauseVoice } from '@/components/chat/VoicePlayer';
+import { RecordingBar, useVoiceRecorder } from '@/components/chat/VoiceRecorder';
 import { Sheet } from '@/components/Sheet';
 import { Avatar, Button, Chip, ConditionBadge, haptic, Icon, IconButton, T, Tap, VerifiedTick } from '@/components/ui';
 import { QUICK_REPLIES } from '@neva/core';
@@ -45,9 +47,6 @@ export default function ChatScreen() {
   const [offerOpen, setOfferOpen] = useState(false);
   const [counterFor, setCounterFor] = useState<Message | null>(null);
   const [viewer, setViewer] = useState<string | null>(null);
-  const [recording, setRecording] = useState(false);
-  const recStart = useRef(0);
-  const [recSecs, setRecSecs] = useState(0);
   const input = useRef<TextInput>(null);
   const mountedAt = useRef(Date.now());
 
@@ -55,7 +54,10 @@ export default function ChatScreen() {
     useCallback(() => {
       useLive.setState({ activeConversationId: id });
       useStore.getState().markRead(id);
-      return () => useLive.setState({ activeConversationId: null });
+      return () => {
+        useLive.setState({ activeConversationId: null });
+        pauseVoice();
+      };
     }, [id]),
   );
 
@@ -65,10 +67,19 @@ export default function ChatScreen() {
   }, [text, id]);
 
   useEffect(() => {
-    if (!recording) return;
-    const i = setInterval(() => setRecSecs(Math.floor((Date.now() - recStart.current) / 1000)), 250);
-    return () => clearInterval(i);
-  }, [recording]);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') pauseVoice();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // real voice notes: recorder hands back a local .m4a; the sync layer uploads it to chat-media
+  const voice = useVoiceRecorder((seconds, uri) => {
+    haptic.light();
+    useStore.getState().sendMessage(id, { type: 'voice', voice: { seconds, uri }, replyToId: replyTo?.id });
+    setReplyTo(null);
+  });
+  const recording = voice.recording;
 
   const rows: Row[] = useMemo(() => {
     const out: Row[] = [];
@@ -237,20 +248,20 @@ export default function ChatScreen() {
                 <View style={{ width: 2, alignSelf: 'stretch', borderRadius: 1, backgroundColor: t.primary }} />
                 <View style={{ flex: 1 }}>
                   <T size={12.5} weight="600" color={t.primary}>Replying to {replyTo.senderId === meId ? 'yourself' : user.displayName}</T>
-                  <T dim size={13} numberOfLines={1}>{replyTo.type === 'image' ? 'Photo' : replyTo.type === 'offer' ? `Offer ${formatNaira(replyTo.offer!.amountMinor)}` : replyTo.body}</T>
+                  <T dim size={13} numberOfLines={1}>{replyTo.type === 'image' ? 'Photo' : replyTo.type === 'offer' ? `Offer ${formatNaira(replyTo.offer!.amountMinor)}` : replyTo.type === 'voice' ? 'Voice message' : replyTo.body}</T>
                 </View>
                 <IconButton name="close" size={18} color={t.textDim} onPress={() => setReplyTo(null)} style={{ padding: 2 }} />
               </Animated.View>
             )}
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 8, gap: 6 }}>
               {recording ? (
-                <IconButton name="trash-outline" color={t.danger} size={24} onPress={() => { setRecording(false); haptic.warn(); }} style={{ marginBottom: 2 }} />
+                <IconButton name="trash-outline" color={t.danger} size={24} onPress={voice.cancel} style={{ marginBottom: 2 }} />
               ) : (
                 <IconButton name="add-circle" color={t.primary} size={28} onPress={() => setAttach(true)} style={{ marginBottom: 1 }} />
               )}
               <View style={{ flex: 1, backgroundColor: t.surface2, borderRadius: 22, minHeight: 44, justifyContent: 'center' }}>
                 {recording ? (
-                  <RecordingBar secs={recSecs} />
+                  <RecordingBar secs={voice.secs} />
                 ) : (
                   <TextInput
                     ref={input}
@@ -268,8 +279,8 @@ export default function ChatScreen() {
                   text.trim()
                     ? sendText
                     : recording
-                      ? () => { setRecording(false); send({ type: 'voice', voice: { seconds: Math.max(1, recSecs) } }); }
-                      : () => { haptic.medium(); recStart.current = Date.now(); setRecSecs(0); setRecording(true); }
+                      ? voice.send
+                      : voice.start
                 }
                 hitSlop={6}
                 style={{ width: 46, height: 46, borderRadius: 23, overflow: 'hidden' }}>
@@ -386,21 +397,6 @@ export default function ChatScreen() {
           </View>
         </Pressable>
       </Modal>
-    </View>
-  );
-}
-
-function RecordingBar({ secs }: { secs: number }) {
-  const t = useTheme();
-  const o = useSharedValue(1);
-  useEffect(() => {
-    o.value = withRepeat(withTiming(0.25, { duration: 600 }), -1, true);
-  }, [o]);
-  const a = useAnimatedStyle(() => ({ opacity: o.value }));
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', height: 44, paddingHorizontal: 16, gap: 10 }}>
-      <Animated.View style={[{ width: 9, height: 9, borderRadius: 5, backgroundColor: t.danger }, a]} />
-      <T weight="500" style={{ fontVariant: ['tabular-nums'] }}>0:{String(secs).padStart(2, '0')}</T>
     </View>
   );
 }

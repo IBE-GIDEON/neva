@@ -77,7 +77,8 @@ export type Message = {
   listingId?: string;
   storyImage?: string;
   offer?: { amountMinor: number; state: 'pending' | 'accepted' | 'declined' | 'countered' };
-  voice?: { seconds: number };
+  /** Voice note: length, plus the audio (local file/blob while sending, signed URL once stored). */
+  voice?: { seconds: number; uri?: string; /** file extension when the uri has none (web blob: recordings) */ ext?: string };
   replyToId?: string;
   reactions?: Record<string, string>;
   status: MessageStatus;

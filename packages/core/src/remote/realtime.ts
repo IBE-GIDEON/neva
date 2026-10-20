@@ -40,7 +40,7 @@ async function onMessage(ctx: Ctx, p: Payload<MessageRow>) {
   if (!ctx.store.getState().conversations[cid]) return loadConversation(ctx, row.conversation_id);
 
   let imageUrl: string | undefined;
-  if (row.type === 'image' && row.media_path && !row.deleted_at) imageUrl = (await signChatMedia(ctx, [row.media_path])).get(row.media_path);
+  if ((row.type === 'image' || row.type === 'voice') && row.media_path && !row.deleted_at) imageUrl = (await signChatMedia(ctx, [row.media_path])).get(row.media_path);
   if (row.listing_id) void ensureListings(ctx, [row.listing_id]).catch(() => {});
   if (!ctx.alive) return;
 

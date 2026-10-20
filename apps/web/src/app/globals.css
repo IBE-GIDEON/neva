@@ -532,3 +532,28 @@ select.field { appearance: none; cursor: pointer; background: var(--panel); }
 @media (prefers-reduced-motion: reduce) {
   .msheet-backdrop, .msheet-react, .msheet-card { animation: none; }
 }
+
+/* ---------- voice notes: recording bar + real playback ---------- */
+.send-btn.mic-btn:hover, .send-btn.vr-trash:hover { background: var(--hover); color: var(--text); }
+.voice-rec .send-btn:disabled { opacity: .5; cursor: default; }
+.composer.voice-rec { align-items: center; }
+.voice-rec .vr-status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 14px; border-radius: 10px; background: var(--input); }
+.voice-rec .vr-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.voice-rec .vr-dot.on { background: var(--danger); animation: vr-blink 1.4s ease-in-out infinite; }
+.voice-rec .vr-time { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--text); }
+.voice-rec .vr-label { font-size: 13.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-rec .vr-err-ic { color: var(--danger); flex-shrink: 0; margin-left: 8px; }
+.voice-rec .vr-err { flex: 1; min-width: 0; font-size: 13.5px; line-height: 18px; color: var(--text2); }
+.voice .wave.seekable { cursor: pointer; touch-action: pan-y; outline: 0; border-radius: 4px; }
+.voice .wave.seekable:focus-visible { box-shadow: 0 0 0 2px var(--accent-soft); }
+.voice .vn-spin { animation: vn-spin .9s linear infinite; }
+.voice.unavailable .play { opacity: .45; }
+.voice.unavailable .vn-na { flex: 1; min-width: 0; font-size: 13px; font-style: italic; opacity: .7; }
+@keyframes vr-blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes vn-spin { to { transform: rotate(360deg); } }
+@media (max-width: 900px) {
+  .voice-rec .vr-status { padding: 0 12px; gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-rec .vr-dot.on { animation: none; }
+}

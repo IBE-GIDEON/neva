@@ -15,10 +15,9 @@ import {
   Lock,
   MailOpen,
   MessageSquarePlus,
+  Mic,
   MoreVertical,
-  Pause,
   Pin,
-  Play,
   Plus,
   Reply,
   Search,
@@ -36,6 +35,8 @@ import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 
 import { Avatar, Badge, Cond, Dropdown, Empty, type MenuItem, Modal, Verified } from '../components/ui';
+import { VoiceNote } from '../components/VoiceNote';
+import { type RecordedVoice, VoiceRecorder } from '../components/VoiceRecorder';
 import { signOutEverywhere } from '../lib/auth';
 import { pickImages } from '../lib/images';
 import { useNav } from '../nav';
@@ -330,6 +331,9 @@ function ConversationView({ id }: { id: string }) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [offer, setOffer] = useState<string | null>(null);
   const [counterFor, setCounterFor] = useState<Message | null>(null);
+  /** Voice recording bar replaces the composer while true (unmounting it releases the mic). */
+  const [recording, setRecording] = useState(false);
+  if (recording && blocked) setRecording(false); // blocking hides the composer; don't resume recording on unblock
   /** Touch long-press action sheet: the pressed message plus a snapshot of its bubble (position + DOM clone). */
   const [sheet, setSheet] = useState<{ m: Message; rect: DOMRect; clone: HTMLElement } | null>(null);
   const story = useUnseenStory(conv?.participantId);
@@ -385,6 +389,12 @@ function ConversationView({ id }: { id: string }) {
     setText('');
     setReplyTo(null);
     useStore.getState().setDraftText(id, '');
+  };
+  const sendVoice = (voice: RecordedVoice) => {
+    // blob: URL — the sync layer uploads it privately to chat-media and the echo swaps in a signed URL.
+    send({ type: 'voice', voice, replyToId: replyTo?.id });
+    setRecording(false);
+    setReplyTo(null);
   };
   const closeOffer = () => {
     setOffer(null);
@@ -596,7 +606,7 @@ function ConversationView({ id }: { id: string }) {
               </button>
             </div>
           )}
-          {myCount < 2 && !replyTo && !text && (
+          {myCount < 2 && !replyTo && !text && !recording && (
             <div className="quick-replies">
               {QUICK_REPLIES.map((q) => (
                 <button key={q} className="pill" onClick={() => sendQuick(q)}>
@@ -605,37 +615,47 @@ function ConversationView({ id }: { id: string }) {
               ))}
             </div>
           )}
-          <div className="composer">
-            <Dropdown
-              align="left"
-              trigger={(t, o) => (
-                <button className={`send-btn${o ? ' on' : ''}`} onClick={t} aria-label="Attach" style={{ transform: o ? 'rotate(45deg)' : undefined, transition: 'transform .15s' }}>
-                  <Plus size={24} />
+          {recording ? (
+            <VoiceRecorder onSend={sendVoice} onClose={() => setRecording(false)} />
+          ) : (
+            <div className="composer">
+              <Dropdown
+                align="left"
+                trigger={(t, o) => (
+                  <button className={`send-btn${o ? ' on' : ''}`} onClick={t} aria-label="Attach" style={{ transform: o ? 'rotate(45deg)' : undefined, transition: 'transform .15s' }}>
+                    <Plus size={24} />
+                  </button>
+                )}
+                items={[
+                  { label: 'Photo', icon: <ImageIcon size={18} color="var(--accent)" />, onClick: async () => { const [img] = await pickImages(); if (img) send({ type: 'image', imageUri: img, replyToId: replyTo?.id }); setReplyTo(null); } },
+                  canOffer && { label: 'Make an offer', icon: <Tag size={18} color="var(--accent)" />, onClick: openOffer },
+                ]}
+              />
+              <textarea
+                ref={input}
+                rows={1}
+                placeholder="Type a message"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendText();
+                  }
+                  if (e.key === 'Escape') setReplyTo(null);
+                }}
+              />
+              {text.trim() ? (
+                <button className="send-btn go" onClick={sendText} aria-label="Send">
+                  <SendHorizontal size={20} />
+                </button>
+              ) : (
+                <button className="send-btn mic-btn" onClick={() => setRecording(true)} aria-label="Record voice note" title="Record voice note">
+                  <Mic size={21} />
                 </button>
               )}
-              items={[
-                { label: 'Photo', icon: <ImageIcon size={18} color="var(--accent)" />, onClick: async () => { const [img] = await pickImages(); if (img) send({ type: 'image', imageUri: img, replyToId: replyTo?.id }); setReplyTo(null); } },
-                canOffer && { label: 'Make an offer', icon: <Tag size={18} color="var(--accent)" />, onClick: openOffer },
-              ]}
-            />
-            <textarea
-              ref={input}
-              rows={1}
-              placeholder="Type a message"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendText();
-                }
-                if (e.key === 'Escape') setReplyTo(null);
-              }}
-            />
-            <button className={`send-btn${text.trim() ? ' go' : ''}`} disabled={!text.trim()} onClick={sendText} aria-label="Send">
-              <SendHorizontal size={20} />
-            </button>
-          </div>
+            </div>
+          )}
         </>
       )}
 
@@ -703,7 +723,7 @@ const MOVE_SLOP = 10;
 const SWIPE_TRIGGER = 60;
 const SWIPE_MAX = 80;
 /** Interactive bits inside a bubble keep their own tap behaviour (offer buttons, retry, voice play, links). */
-const NO_GESTURE = 'button, a, input, textarea, select, audio, video, [role="button"]';
+const NO_GESTURE = 'button, a, input, textarea, select, audio, video, [role="button"], [role="slider"]';
 const mq = (q: string) => typeof window !== 'undefined' && !!window.matchMedia?.(q).matches;
 const buzz = () => {
   try {
@@ -1004,48 +1024,8 @@ function MessageBody({ m, mine, blocked, onOffer, onCounter }: { m: Message; min
         {m.body}
       </>
     );
-  if (m.type === 'voice') return <VoiceNote seconds={Math.max(1, m.voice?.seconds ?? 1)} />;
+  if (m.type === 'voice') return <VoiceNote seconds={Math.max(1, m.voice?.seconds ?? 1)} uri={m.voice?.uri} />;
   return <>{m.body}</>;
-}
-
-const BARS = [6, 12, 9, 16, 11, 20, 8, 14, 18, 10, 13, 22, 11, 7, 14, 17, 9, 12, 6, 10, 15, 8];
-const clip = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-
-/** Voice note bubble. Audio isn't stored yet, so playback is simulated progress (same as mobile). Recording stays on mobile. */
-function VoiceNote({ seconds }: { seconds: number }) {
-  const [playing, setPlaying] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const from = useRef(0);
-  useEffect(() => {
-    if (!playing) return;
-    const started = Date.now() - from.current * 1000;
-    const t = setInterval(() => {
-      const e = Math.min(seconds, (Date.now() - started) / 1000);
-      if (e >= seconds) {
-        from.current = 0;
-        setPlaying(false);
-        setElapsed(0);
-      } else {
-        from.current = e;
-        setElapsed(e);
-      }
-    }, 100);
-    return () => clearInterval(t);
-  }, [playing, seconds]);
-  const progress = elapsed / seconds;
-  return (
-    <div className="voice">
-      <button className="play" onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Pause voice message' : 'Play voice message'}>
-        {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" style={{ marginLeft: 2 }} />}
-      </button>
-      <div className="wave" aria-hidden>
-        {BARS.map((h, i) => (
-          <i key={i} className={(i + 0.5) / BARS.length <= progress ? 'on' : ''} style={{ height: h }} />
-        ))}
-      </div>
-      <span className="dur">{clip(Math.floor(playing || elapsed > 0 ? elapsed : seconds))}</span>
-    </div>
-  );
 }
 
 /** Shared by the Archived panel. */

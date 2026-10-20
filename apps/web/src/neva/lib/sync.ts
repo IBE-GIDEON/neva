@@ -12,7 +12,7 @@ const typeOf = (dataUrl: string) => /^data:(image\/[a-z+]+);/.exec(dataUrl)?.[1]
 const uploadImage: UploadImage = async (bucket, path, dataUrl) => {
   if (!supabase) throw new Error('Not connected');
   const blob = await (await fetch(dataUrl)).blob();
-  const { error } = await supabase.storage.from(bucket).upload(path, blob, { contentType: blob.type || typeOf(dataUrl), upsert: true });
+  const { error } = await supabase.storage.from(bucket).upload(path, blob, { contentType: (blob.type || typeOf(dataUrl)).split(';')[0], upsert: true });
   if (error) throw error;
   return path;
 };
