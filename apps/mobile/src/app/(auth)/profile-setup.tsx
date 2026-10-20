@@ -53,9 +53,7 @@ export default function ProfileSetup() {
         <Field label="Username" value={username} onChange={(v) => setUsername(v.toLowerCase().replace(/\s/g, ''))} placeholder="emeka.d" prefix="@" error={usernameError} />
         <View style={{ gap: 8 }}>
           <T dim size={13} weight="600">City (we only show your city, never your address)</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <LocationField value={city} onChange={(v) => setCity(v ?? '')} placeholder="Your city or area" />
-          </View>
+          <LocationField value={city} onChange={(v) => setCity(v ?? '')} placeholder="Your city or area" />
         </View>
       </ScrollView>
       <View style={{ padding: 24, paddingBottom: insets.bottom + 16 }}>

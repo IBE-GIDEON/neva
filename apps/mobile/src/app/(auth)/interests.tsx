@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Dimensions, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,8 +22,7 @@ export default function Interests() {
 
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const finish = () => {
-    completeInterests(picked);
-    router.replace('/');
+    completeInterests(picked); // the (auth) layout moves to Chats once the stage is 'ready'
   };
 
   return (
