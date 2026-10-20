@@ -14,6 +14,11 @@ import { useTheme } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+/** Screens that should never be open twice at once (double taps open them once). */
+const SINGLE_SCREENS = ['archived', 'edit-profile', 'new-chat', 'notifications', 'reports', 'saved', 'search', 'starred', 'settings/index', 'settings/blocked', 'settings/notifications', 'settings/privacy', 'settings/safety'];
+/** Singular per route param, e.g. one chat screen per conversation id. */
+const byParam = (key: string) => (_name: string, params: Record<string, unknown>) => (params[key] == null ? undefined : String(params[key]));
+
 export default function RootLayout() {
   const hydrated = useStore((s) => s.hydrated);
   useEffect(() => {
@@ -42,12 +47,20 @@ function App() {
             <Stack.Screen name="index" options={{ animation: 'none' }} />
             <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
             <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
-            <Stack.Screen name="story/[userId]" options={{ animation: 'fade', presentation: 'transparentModal', contentStyle: { backgroundColor: '#000' } }} />
-            <Stack.Screen name="status-new" options={{ animation: 'slide_from_bottom', presentation: 'fullScreenModal' }} />
-            <Stack.Screen name="sell-new" options={{ animation: 'slide_from_bottom', presentation: 'fullScreenModal' }} />
-            <Stack.Screen name="report" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
-            <Stack.Screen name="review" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
-            <Stack.Screen name="filters" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
+            {/* One screen per item, no matter how fast it's tapped: re-opening the same chat/listing/shop/status
+                reuses the open screen instead of stacking a copy. */}
+            <Stack.Screen name="chat/[id]" dangerouslySingular={byParam('id')} />
+            <Stack.Screen name="listing/[id]" dangerouslySingular={byParam('id')} />
+            <Stack.Screen name="seller/[id]" dangerouslySingular={byParam('id')} />
+            <Stack.Screen name="story/[userId]" dangerouslySingular={byParam('userId')} options={{ animation: 'fade', presentation: 'transparentModal', contentStyle: { backgroundColor: '#000' } }} />
+            <Stack.Screen name="status-new" dangerouslySingular options={{ animation: 'slide_from_bottom', presentation: 'fullScreenModal' }} />
+            <Stack.Screen name="sell-new" dangerouslySingular options={{ animation: 'slide_from_bottom', presentation: 'fullScreenModal' }} />
+            <Stack.Screen name="report" dangerouslySingular options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
+            <Stack.Screen name="review" dangerouslySingular options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
+            <Stack.Screen name="filters" dangerouslySingular options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
+            {SINGLE_SCREENS.map((name) => (
+              <Stack.Screen key={name} name={name} dangerouslySingular />
+            ))}
           </Stack>
           <ToastHost />
       </ThemeProvider>
